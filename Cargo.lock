@@ -5,12 +5,24 @@ version = 4
 [[package]]
 name = "backend-rust"
 version = "0.1.0"
+dependencies = [
+ "transpiler-core",
+]
 
 [[package]]
 name = "cli"
 version = "0.1.0"
 dependencies = [
+ "backend-rust",
+ "frontend-go",
+ "frontend-java",
+ "frontend-javascript",
+ "frontend-kotlin",
+ "frontend-python",
+ "frontend-typescript",
  "transpiler-core",
+ "transpiler-rt",
+ "verifier-z3",
 ]
 
 [[package]]
@@ -67,3 +79,6 @@ version = "0.1.0"
 [[package]]
 name = "verifier-z3"
 version = "0.1.0"
+dependencies = [
+ "transpiler-core",
+]

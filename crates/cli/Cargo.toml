@@ -10,3 +10,12 @@ path = "src/main.rs"
 
 [dependencies]
 transpiler-core = { path = "../transpiler-core" }
+transpiler-rt = { path = "../transpiler-rt" }
+frontend-javascript = { path = "../frontend-javascript" }
+frontend-typescript = { path = "../frontend-typescript" }
+frontend-python = { path = "../frontend-python" }
+frontend-go = { path = "../frontend-go" }
+frontend-java = { path = "../frontend-java" }
+frontend-kotlin = { path = "../frontend-kotlin" }
+backend-rust = { path = "../backend-rust" }
+verifier-z3 = { path = "../verifier-z3" }

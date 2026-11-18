@@ -35,6 +35,9 @@ version = "0.1.0"
 [[package]]
 name = "frontend-python"
 version = "0.1.0"
+dependencies = [
+ "transpiler-core",
+]
 
 [[package]]
 name = "frontend-typescript"

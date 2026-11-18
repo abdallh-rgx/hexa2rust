@@ -861,18 +861,22 @@ impl JavaParser {
             return self.nxt(1).kind == Tok::Ident;
         }
         if t.kind == Tok::Ident {
-            // Name name | Name[] name | Name<...> name | Name... — approximate:
-            // if next is Ident -> declaration. If next is . -> qualified type, scan.
+            // Name name | Name[] name | Name<...> name | a.b.c name
             let mut i = 1;
+            // qualified type: seg . seg . seg
             while self.nxt(i).kind == Tok::Ident && self.nxt(i + 1).is_punct(".") {
-                i += 2;
+                i += 2; // skip segment and dot
             }
-            // now nxt(i) is last segment; declaration if nxt(i+1) is Ident
-            // generics: < ... > Ident
-            if self.nxt(i + 1).is_punct("<") {
-                return true; // generic type then name (approx)
+            // generic type: Name<...> name
+            if self.nxt(i).is_punct("<") {
+                return true;
             }
-            return self.nxt(i + 1).kind == Tok::Ident;
+            // array type: Name[] name
+            if self.nxt(i).is_punct("[") {
+                return true;
+            }
+            // declaration iff the token after the type is an identifier
+            return self.nxt(i).kind == Tok::Ident;
         }
         false
     }

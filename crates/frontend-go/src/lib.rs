@@ -18,8 +18,8 @@ const GO_KEYWORDS: &[&str] = &[
 
 const GO_PUNCTS: &[&str] = &[
     "<<=", ">>=", "&^=", "...", "&&", "||", "==", "!=", "<-", ":=", "<<", ">>", "&^", "<=",
-    ">=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "+", "-", "*", "/", "%", "=", "<",
-    ">", "!", "~", "&", "|", "^", "(", ")", "[", "]", "{", "}", ",", ":", ".", ";",
+    ">=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "++", "--", "+", "-", "*", "/", "%",
+    "=", "<", ">", "!", "~", "&", "|", "^", "(", ")", "[", "]", "{", "}", ",", ":", ".", ";",
 ];
 
 pub fn go_lexer_config() -> LexerConfig {
@@ -38,6 +38,7 @@ pub struct GoParser {
     file: String,
     imports: Vec<String>,
     classes: Vec<Decl>,
+    type_names: std::collections::HashSet<String>,
     /// methods to attach to classes after parsing
     pending_methods: Vec<(String, FunctionDecl)>,
 }
@@ -52,6 +53,7 @@ pub fn parse_go(src: &str, file: &str) -> PResult<Module> {
         file: file.to_string(),
         imports: vec![],
         classes: vec![],
+        type_names: Default::default(),
         pending_methods: vec![],
     };
     p.parse_file()
@@ -118,6 +120,11 @@ impl GoParser {
             return Ok(());
         }
         if self.cur().kind == Tok::Eof || self.at_punct("}") {
+            return Ok(());
+        }
+        // Go automatic semicolon insertion: newline ends the statement
+        let prev = &self.toks[self.pos.saturating_sub(1)];
+        if self.cur().line > prev.line {
             return Ok(());
         }
         Err(self.err(format!("expected ';' or newline, found '{}'", self.cur().text)))
@@ -239,6 +246,7 @@ impl GoParser {
         if self.at_kw("type") {
             self.bump();
             let tname = self.expect_ident()?;
+            self.type_names.insert(tname.clone());
             if self.at_punct("[") {
                 self.skip_brackets()?; // generic type params
             }
@@ -824,32 +832,7 @@ impl GoParser {
         // simple statement sequence: expr or assignment or :=
         let first = self.parse_expr()?;
         if self.at_punct(":=") {
-            self.bump();
-            let mut names: Vec<String> = match &first {
-                Expr::Ident(n) => vec![n.clone()],
-                Expr::Array(items) => {
-                    let mut ns: Vec<String> = Vec::new();
-                    for it in items {
-                        match it {
-                            Expr::Ident(n) => ns.push(n.clone()),
-                            _ => return Err(self.unsupported("complex := target")),
-                        }
-                    }
-                    ns
-                }
-                _ => return Err(self.unsupported("complex := target")),
-            };
-            if names.len() > 1 {
-                return Err(self.unsupported("multiple return values"));
-            }
-            let value = self.parse_expr()?;
-            self.expect_semi()?;
-            return Ok(Some(Stmt::Local {
-                name: names.pop().unwrap(),
-                ty: Ty::Any,
-                init: Some(value),
-                mutable: true,
-            }));
+            return self.parse_short_var_decl(first);
         }
         const AUG: &[(&str, BinOp)] = &[
             ("+=", BinOp::Add),
@@ -969,36 +952,79 @@ impl GoParser {
             let save = self.pos;
             let e = self.parse_simple()?;
             if self.at_punct(":=") {
-                self.bump();
-                let name = match &e {
-                    Expr::Ident(n) => n.clone(),
-                    _ => return Err(self.unsupported("complex := in for")),
-                };
-                // range?
-                if self.at_kw("range") {
+                if let Expr::Ident(name) = &e {
                     self.bump();
+                    // range?
+                    if self.at_kw("range") {
+                        self.bump();
+                        let iter = self.parse_expr()?;
+                        let body = self.parse_block()?;
+                        return Ok(Some(Stmt::ForEach {
+                            var: name.clone(),
+                            var2: None,
+                            var_ty: Ty::Any,
+                            iter: Expr::call(Expr::ident("__indices__"), vec![iter]),
+                            body,
+                        }));
+                    }
+                    let value = self.parse_simple()?;
+                    let init = vec![Stmt::Local {
+                        name: name.clone(),
+                        ty: Ty::Any,
+                        init: Some(value),
+                        mutable: true,
+                    }];
+                    self.expect_punct(";")?;
+                    return self.parse_for_rest(Some(init));
+                }
+                // multi-name: v, ok := m[k]
+                self.pos = save;
+                let names = self.parse_ident_list()?;
+                self.bump(); // :=
+                if names.len() == 2 && !self.at_kw("range") {
+                    let value = self.parse_expr()?;
+                    if let Expr::Index { obj, idx } = value {
+                        let obj = *obj;
+                        let idx = *idx;
+                        let has = Expr::call(
+                            Expr::ident("__map_has__"),
+                            vec![obj.clone(), idx.clone()],
+                        );
+                        let get = Expr::index(obj, idx);
+                        let init = vec![
+                            Stmt::Local {
+                                name: names[0].clone(),
+                                ty: Ty::Any,
+                                init: Some(get),
+                                mutable: true,
+                            },
+                            Stmt::Local {
+                                name: names[1].clone(),
+                                ty: Ty::Any,
+                                init: Some(has),
+                                mutable: true,
+                            },
+                        ];
+                        self.expect_punct(";")?;
+                        return self.parse_for_rest(Some(init));
+                    }
+                    return Err(self.unsupported("multiple return values"));
+                }
+                if names.len() == 2 && self.eat_kw("range") {
                     let iter = self.parse_expr()?;
                     let body = self.parse_block()?;
                     return Ok(Some(Stmt::ForEach {
-                        var: name,
-                        var2: None,
+                        var: names[0].clone(),
+                        var2: Some(names[1].clone()),
                         var_ty: Ty::Any,
-                        iter: Expr::call(Expr::ident("__indices__"), vec![iter]),
+                        iter,
                         body,
                     }));
                 }
-                let value = self.parse_simple()?;
-                let init = vec![Stmt::Local {
-                    name,
-                    ty: Ty::Any,
-                    init: Some(value),
-                    mutable: true,
-                }];
-                self.expect_punct(";")?;
-                return self.parse_for_rest(Some(init));
+                return Err(self.unsupported("multi-assign"));
             }
             if self.at_punct(",") {
-                // k, v := range
+                // k, v := range / k, v = ...
                 let mut names = match &e {
                     Expr::Ident(n) => vec![n.clone()],
                     _ => return Err(self.unsupported("complex range target")),
@@ -1076,6 +1102,72 @@ impl GoParser {
             cond,
             step,
             body,
+        }))
+    }
+
+    fn parse_ident_list(&mut self) -> PResult<Vec<String>> {
+        let mut names = vec![self.expect_ident()?];
+        while self.eat_punct(",") {
+            names.push(self.expect_ident()?);
+        }
+        Ok(names)
+    }
+
+    /// `a := e` or `v, ok := m[k]` (two-value map lookup idiom)
+    fn parse_short_var_decl(&mut self, first: Expr) -> PResult<Option<Stmt>> {
+        self.bump(); // :=
+        let mut names: Vec<String> = match &first {
+            Expr::Ident(n) => vec![n.clone()],
+            Expr::Array(items) => {
+                let mut ns: Vec<String> = Vec::new();
+                for it in items {
+                    match it {
+                        Expr::Ident(n) => ns.push(n.clone()),
+                        _ => return Err(self.unsupported("complex := target")),
+                    }
+                }
+                ns
+            }
+            _ => return Err(self.unsupported("complex := target")),
+        };
+        if names.len() == 2 {
+            let value = self.parse_expr()?;
+            self.expect_semi()?;
+            if let Expr::Index { obj, idx } = value {
+                let obj = *obj;
+                let idx = *idx;
+                let has = Expr::call(
+                    Expr::ident("__map_has__"),
+                    vec![obj.clone(), idx.clone()],
+                );
+                let get = Expr::index(obj, idx);
+                return Ok(Some(Stmt::Block(vec![
+                    Stmt::Local {
+                        name: names[0].clone(),
+                        ty: Ty::Any,
+                        init: Some(get),
+                        mutable: true,
+                    },
+                    Stmt::Local {
+                        name: names[1].clone(),
+                        ty: Ty::Any,
+                        init: Some(has),
+                        mutable: true,
+                    },
+                ])));
+            }
+            return Err(self.unsupported("multiple return values"));
+        }
+        if names.len() > 1 {
+            return Err(self.unsupported("multiple return values"));
+        }
+        let value = self.parse_expr()?;
+        self.expect_semi()?;
+        Ok(Some(Stmt::Local {
+            name: names.pop().unwrap(),
+            ty: Ty::Any,
+            init: Some(value),
+            mutable: true,
         }))
     }
 
@@ -1327,6 +1419,15 @@ impl GoParser {
                 e = Expr::Index { obj: Box::new(e), idx: Box::new(idx) };
                 continue;
             }
+            if self.at_punct("++") || self.at_punct("--") {
+                let is_inc = self.at_punct("++");
+                self.bump();
+                e = Expr::Post {
+                    op: if is_inc { UnOp::PreInc } else { UnOp::PreDec },
+                    e: Box::new(e),
+                };
+                continue;
+            }
             break;
         }
         Ok(e)
@@ -1392,6 +1493,10 @@ impl GoParser {
                 // generic instantiation f[T](...)
                 if self.at_punct("[") && self.looks_like_type_args() {
                     self.skip_brackets()?;
+                }
+                // struct composite literal: Type{...} when Type is known
+                if self.at_punct("{") && self.type_names.contains(&t.text) {
+                    return self.parse_composite(Ty::Class(t.text.clone()), false);
                 }
                 Ok(Expr::Ident(t.text))
             }
@@ -1493,22 +1598,20 @@ impl GoParser {
             self.expect_punct("}")?;
             return Ok(Expr::Dict(pairs));
         }
-        let el_ty = match ty {
-            Ty::Array(el) => *el,
-            other => other,
+        // struct composite literal (keyed or positional)
+        let class = match &ty {
+            Ty::Class(n) => Some(n.clone()),
+            _ => None,
         };
-        // keyed or positional struct/slice literal
-        let mut positional = Vec::new();
-        let mut keyed = false;
         if self.at_punct("}") {
             self.bump();
+            if let Some(c) = class {
+                return Ok(Expr::call(Expr::ident(&format!("__structinit_{}", c)), vec![]));
+            }
             return Ok(Expr::Array(vec![]));
         }
         // peek: ident ':' -> keyed
         if self.cur().kind == Tok::Ident && self.nxt(1).is_punct(":") {
-            keyed = true;
-        }
-        if keyed {
             let mut fields = Vec::new();
             while !self.at_punct("}") {
                 if self.cur().kind == Tok::Eof {
@@ -1517,15 +1620,19 @@ impl GoParser {
                 let fname = self.expect_ident()?;
                 self.expect_punct(":")?;
                 let v = self.parse_expr()?;
-                fields.push((fname, v));
+                fields.push(Expr::Named { name: fname, e: Box::new(v) });
                 if !self.eat_punct(",") {
                     break;
                 }
             }
             self.expect_punct("}")?;
-            // struct composite -> New with named args
-            return Ok(Expr::Object(fields));
+            let c = class.ok_or_else(|| self.unsupported("keyed literal of unknown type"))?;
+            return Ok(Expr::call(
+                Expr::ident(&format!("__structinit_{}", c)),
+                fields,
+            ));
         }
+        let mut positional = Vec::new();
         while !self.at_punct("}") {
             if self.cur().kind == Tok::Eof {
                 return Err(self.err("unexpected end of composite literal"));
@@ -1536,7 +1643,12 @@ impl GoParser {
             }
         }
         self.expect_punct("}")?;
-        let _ = el_ty;
+        if let Some(c) = class {
+            return Ok(Expr::call(
+                Expr::ident(&format!("__structinit_{}", c)),
+                positional,
+            ));
+        }
         Ok(Expr::Array(positional))
     }
 }

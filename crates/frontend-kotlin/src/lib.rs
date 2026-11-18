@@ -17,7 +17,7 @@ const KOTLIN_KEYWORDS: &[&str] = &[
 
 const KOTLIN_PUNCTS: &[&str] = &[
     "..<", "...", "->", "?.", "?:", "::", "!!", "++", "--", "+=", "-=", "*=", "/=", "%=",
-    "<<", ">>", "<=", ">=", "==", "!=", "&&", "||", "(", ")", "[", "]", "{", "}", ",",
+    "..", "<<", ">>", "<=", ">=", "==", "!=", "&&", "||", "(", ")", "[", "]", "{", "}", ",",
     ":", ".", ";", "=", "+", "-", "*", "/", "%", "<", ">", "!", "?", "&", "|", "^", "@",
 ];
 
@@ -533,8 +533,10 @@ impl KotlinParser {
             return Err(self.unsupported("extension property"));
         }
         let init = if self.eat_punct("=") { Some(self.parse_expr()?) } else { None };
-        // custom getter/setter
-        if self.at_kw("get") || self.at_kw("set") || (self.cur().kind == Tok::Ident && self.nxt(1).is_punct("(")) {
+        // custom getter/setter (only possible without an initializer)
+        if init.is_none()
+            && (self.at_kw("get") || self.at_kw("set"))
+        {
             return Err(self.unsupported("property accessors"));
         }
         if in_class {

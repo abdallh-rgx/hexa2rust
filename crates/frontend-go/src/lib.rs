@@ -12,8 +12,8 @@ use transpiler_core::lexer::*;
 
 const GO_KEYWORDS: &[&str] = &[
     "break", "case", "chan", "const", "continue", "default", "defer", "else", "fallthrough",
-    "for", "func", "go", "goto", "if", "import", "interface", "map", "package", "range",
-    "return", "select", "struct", "switch", "type", "var",
+    "false", "for", "func", "go", "goto", "if", "import", "interface", "map", "nil", "package",
+    "range", "return", "select", "struct", "switch", "true", "type", "var",
 ];
 
 const GO_PUNCTS: &[&str] = &[

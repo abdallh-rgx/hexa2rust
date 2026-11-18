@@ -29,77 +29,77 @@ pub fn int64Add(a: i64, b: i64) -> Value {
     let __subj = true;
     if __subj == (((a.clone() > 0i64)) && ((b.clone() > 0i64))) {
         if (Value::Bool(Value::lt(&c.borrow().clone(), &Value::Int(0i64 as i64)))).truthy() {
-            return Value::array(vec![Value::Int(0i64 as i64), Value::Str(format!("{:?}", false_()))]);
+            return Value::array(vec![Value::Int(0i64 as i64), Value::Bool(false)]);
         }
     } else if __subj == (((a.clone() < 0i64)) && ((b.clone() < 0i64))) {
         if (Value::Bool(Value::lt(&Value::Int(0i64 as i64), &c.borrow().clone()))).truthy() {
-            return Value::array(vec![Value::Int(0i64 as i64), Value::Str(format!("{:?}", false_()))]);
+            return Value::array(vec![Value::Int(0i64 as i64), Value::Bool(false)]);
         }
-        if (((a.clone() == mostNegative())) && ((b.clone() == mostNegative()))) {
-            return Value::array(vec![Value::Int(0i64 as i64), Value::Str(format!("{:?}", false_()))]);
+        if (((a.clone() == unimplemented!("reference to unresolved `mostNegative` (external)"))) && ((b.clone() == unimplemented!("reference to unresolved `mostNegative` (external)")))) {
+            return Value::array(vec![Value::Int(0i64 as i64), Value::Bool(false)]);
         }
     }
-    return Value::array(vec![c.borrow().clone(), Value::Str(format!("{:?}", true_()))]);
+    return Value::array(vec![c.borrow().clone(), Value::Bool(true)]);
 }
 pub fn int64Multiply(a: i64, b: i64) -> Value {
     if (((((((a.clone() == 0i64)) || ((b.clone() == 0i64)))) || ((a.clone() == 1i64)))) || ((b.clone() == 1i64))) {
-        return Value::array(vec![Value::Int((a.clone() * b.clone()) as i64), Value::Str(format!("{:?}", true_()))]);
+        return Value::array(vec![Value::Int((a.clone() * b.clone()) as i64), Value::Bool(true)]);
     }
-    if (((a.clone() == mostNegative())) || ((b.clone() == mostNegative()))) {
-        return Value::array(vec![Value::Int(0i64 as i64), Value::Str(format!("{:?}", false_()))]);
+    if (((a.clone() == unimplemented!("reference to unresolved `mostNegative` (external)"))) || ((b.clone() == unimplemented!("reference to unresolved `mostNegative` (external)")))) {
+        return Value::array(vec![Value::Int(0i64 as i64), Value::Bool(false)]);
     }
     let mut c: Rt<Value> = rt(Value::Int((a.clone() * b.clone()) as i64));
     return Value::array(vec![c.borrow().clone(), Value::Bool(Value::eq(&Value::div(&c.borrow().clone(), &Value::Str(format!("{:?}", b.clone()))), &Value::Str(format!("{:?}", a.clone()))))]);
 }
 pub fn int64MultiplyScale(a: i64, b: i64) -> Value {
     if (((a.clone() == 0i64)) || ((a.clone() == 1i64))) {
-        return Value::array(vec![Value::Int((a.clone() * b.clone()) as i64), Value::Str(format!("{:?}", true_()))]);
+        return Value::array(vec![Value::Int((a.clone() * b.clone()) as i64), Value::Bool(true)]);
     }
-    if (((a.clone() == mostNegative())) && ((b.clone() != 1i64))) {
-        return Value::array(vec![Value::Int(0i64 as i64), Value::Str(format!("{:?}", false_()))]);
+    if (((a.clone() == unimplemented!("reference to unresolved `mostNegative` (external)"))) && ((b.clone() != 1i64))) {
+        return Value::array(vec![Value::Int(0i64 as i64), Value::Bool(false)]);
     }
     let mut c: Rt<Value> = rt(Value::Int((a.clone() * b.clone()) as i64));
     return Value::array(vec![c.borrow().clone(), Value::Bool(Value::eq(&Value::div(&c.borrow().clone(), &Value::Str(format!("{:?}", b.clone()))), &Value::Str(format!("{:?}", a.clone()))))]);
 }
 pub fn int64MultiplyScale10(a: i64) -> Value {
     if (((a.clone() == 0i64)) || ((a.clone() == 1i64))) {
-        return Value::array(vec![Value::Int((a.clone() * 10i64) as i64), Value::Str(format!("{:?}", true_()))]);
+        return Value::array(vec![Value::Int((a.clone() * 10i64) as i64), Value::Bool(true)]);
     }
-    if (a.clone() == mostNegative()) {
-        return Value::array(vec![Value::Int(0i64 as i64), Value::Str(format!("{:?}", false_()))]);
+    if (a.clone() == unimplemented!("reference to unresolved `mostNegative` (external)")) {
+        return Value::array(vec![Value::Int(0i64 as i64), Value::Bool(false)]);
     }
     let mut c: Rt<Value> = rt(Value::Int((a.clone() * 10i64) as i64));
     return Value::array(vec![c.borrow().clone(), Value::Bool(Value::eq(&Value::div(&c.borrow().clone(), &Value::Int(10i64 as i64)), &Value::Str(format!("{:?}", a.clone()))))]);
 }
 pub fn int64MultiplyScale100(a: i64) -> Value {
     if (((a.clone() == 0i64)) || ((a.clone() == 1i64))) {
-        return Value::array(vec![Value::Int((a.clone() * 100i64) as i64), Value::Str(format!("{:?}", true_()))]);
+        return Value::array(vec![Value::Int((a.clone() * 100i64) as i64), Value::Bool(true)]);
     }
-    if (a.clone() == mostNegative()) {
-        return Value::array(vec![Value::Int(0i64 as i64), Value::Str(format!("{:?}", false_()))]);
+    if (a.clone() == unimplemented!("reference to unresolved `mostNegative` (external)")) {
+        return Value::array(vec![Value::Int(0i64 as i64), Value::Bool(false)]);
     }
     let mut c: Rt<Value> = rt(Value::Int((a.clone() * 100i64) as i64));
     return Value::array(vec![c.borrow().clone(), Value::Bool(Value::eq(&Value::div(&c.borrow().clone(), &Value::Int(100i64 as i64)), &Value::Str(format!("{:?}", a.clone()))))]);
 }
 pub fn int64MultiplyScale1000(a: i64) -> Value {
     if (((a.clone() == 0i64)) || ((a.clone() == 1i64))) {
-        return Value::array(vec![Value::Int((a.clone() * 1000i64) as i64), Value::Str(format!("{:?}", true_()))]);
+        return Value::array(vec![Value::Int((a.clone() * 1000i64) as i64), Value::Bool(true)]);
     }
-    if (a.clone() == mostNegative()) {
-        return Value::array(vec![Value::Int(0i64 as i64), Value::Str(format!("{:?}", false_()))]);
+    if (a.clone() == unimplemented!("reference to unresolved `mostNegative` (external)")) {
+        return Value::array(vec![Value::Int(0i64 as i64), Value::Bool(false)]);
     }
     let mut c: Rt<Value> = rt(Value::Int((a.clone() * 1000i64) as i64));
     return Value::array(vec![c.borrow().clone(), Value::Bool(Value::eq(&Value::div(&c.borrow().clone(), &Value::Int(1000i64 as i64)), &Value::Str(format!("{:?}", a.clone()))))]);
 }
 pub fn positiveScaleInt64(base: i64, scale: Rt<Scale>) -> Value {
     if (base.clone() == 0i64) {
-        return Value::array(vec![Value::Int(0i64 as i64), Value::Str(format!("{:?}", true_()))]);
+        return Value::array(vec![Value::Int(0i64 as i64), Value::Bool(true)]);
     }
     let mut result: i64 = 0i64;
-    let mut ok: Rt<Value> = rt(Value::Str(format!("{:?}", true_())));
+    let mut ok: Rt<Value> = rt(Value::Bool(true));
     let __subj = scale.clone();
     if __subj == 0i64 {
-        return Value::array(vec![Value::Str(format!("{:?}", base.clone())), Value::Str(format!("{:?}", true_()))]);
+        return Value::array(vec![Value::Str(format!("{:?}", base.clone())), Value::Bool(true)]);
     } else if __subj == 1i64 {
         {
             let _ret: Rt<Value> = rt(Value::Str(format!("{:?}", int64MultiplyScale10(base.clone()))));
@@ -132,7 +132,7 @@ pub fn positiveScaleInt64(base: i64, scale: Rt<Scale>) -> Value {
         }
     } else {
         result = base.clone();
-        let mut i: Rt<Value> = rt(Value::Str(format!("{:?}", Scale(0i64))));
+        let mut i: Rt<Value> = rt(Value::Str(format!("{:?}", unimplemented!("call to unresolved member/class `Scale`"))));
         loop { if !((Value::Bool(Value::lt(&i.borrow().clone(), &Value::Str(format!("{:?}", scale.clone()))))).truthy()) { break; }
             {
                 let _ret: Rt<Value> = rt(Value::Str(format!("{:?}", int64MultiplyScale(result.clone(), 10i64))));
@@ -147,32 +147,32 @@ pub fn positiveScaleInt64(base: i64, scale: Rt<Scale>) -> Value {
     }
     if ((!ok.borrow().clone())).truthy() {
         if (base.clone() < 0i64) {
-            return Value::array(vec![Value::Str(format!("{:?}", mostNegative())), Value::Str(format!("{:?}", false_()))]);
+            return Value::array(vec![Value::Str(format!("{:?}", unimplemented!("reference to unresolved `mostNegative` (external)"))), Value::Bool(false)]);
         }
-        return Value::array(vec![Value::Str(format!("{:?}", mostPositive())), Value::Str(format!("{:?}", false_()))]);
+        return Value::array(vec![Value::Str(format!("{:?}", unimplemented!("reference to unresolved `mostPositive` (external)"))), Value::Bool(false)]);
     }
-    return Value::array(vec![Value::Str(format!("{:?}", result.clone())), Value::Str(format!("{:?}", true_()))]);
+    return Value::array(vec![Value::Str(format!("{:?}", result.clone())), Value::Bool(true)]);
 }
 pub fn negativeScaleInt64(base: i64, scale: Rt<Scale>) -> Value {
     if (scale.clone() == 0i64) {
-        return Value::array(vec![Value::Str(format!("{:?}", base.clone())), Value::Str(format!("{:?}", true_()))]);
+        return Value::array(vec![Value::Str(format!("{:?}", base.clone())), Value::Bool(true)]);
     }
     let mut value: Rt<Value> = rt(Value::Str(format!("{:?}", base.clone())));
     let mut fraction: bool = false;
-    let mut i: Rt<Value> = rt(Value::Str(format!("{:?}", Scale(0i64))));
+    let mut i: Rt<Value> = rt(Value::Str(format!("{:?}", unimplemented!("call to unresolved member/class `Scale`"))));
     loop { if !((Value::Bool(Value::lt(&i.borrow().clone(), &Value::Str(format!("{:?}", scale.clone()))))).truthy()) { break; }
         if ((((!fraction.clone())) && (Value::Bool(!Value::eq(&Value::py_mod(&value.borrow().clone(), &Value::Int(10i64 as i64)), &Value::Int(0i64 as i64)))))).truthy() {
-            fraction = true_();
+            fraction = true;
         }
         *value.borrow_mut() = Value::div(&value.borrow().clone(), &Value::Int(10i64 as i64));
         if (Value::Bool(Value::eq(&value.borrow().clone(), &Value::Int(0i64 as i64)))).truthy() {
             if fraction.clone() {
                 if (base.clone() > 0i64) {
-                    return Value::array(vec![Value::Int(1i64 as i64), Value::Str(format!("{:?}", false_()))]);
+                    return Value::array(vec![Value::Int(1i64 as i64), Value::Bool(false)]);
                 }
-                return Value::array(vec![Value::Int((-1i64) as i64), Value::Str(format!("{:?}", false_()))]);
+                return Value::array(vec![Value::Int((-1i64) as i64), Value::Bool(false)]);
             }
-            return Value::array(vec![Value::Int(0i64 as i64), Value::Str(format!("{:?}", true_()))]);
+            return Value::array(vec![Value::Int(0i64 as i64), Value::Bool(true)]);
         }
         *i.borrow_mut() = Value::add(&i.borrow().clone(), &Value::Int(1));
     }
@@ -231,42 +231,42 @@ pub fn pow10Int64(b: i64) -> i64 {
 }
 pub fn divideByScaleInt64(base: i64, scale: Rt<Scale>) -> Value {
     if (scale.clone() == 0i64) {
-        return Value::array(vec![Value::Str(format!("{:?}", base.clone())), Value::Int(0i64 as i64), Value::Str(format!("{:?}", true_()))]);
+        return Value::array(vec![Value::Str(format!("{:?}", base.clone())), Value::Int(0i64 as i64), Value::Bool(true)]);
     }
     if (scale.clone() >= 18i64) {
-        return Value::array(vec![Value::Int(0i64 as i64), Value::Str(format!("{:?}", base.clone())), Value::Str(format!("{:?}", false_()))]);
+        return Value::array(vec![Value::Int(0i64 as i64), Value::Str(format!("{:?}", base.clone())), Value::Bool(false)]);
     }
-    let mut divisor: Rt<Value> = rt(Value::Str(format!("{:?}", pow10Int64(int64(scale.clone())))));
-    return Value::array(vec![Value::div(&Value::Str(format!("{:?}", base.clone())), &divisor.borrow().clone()), Value::py_mod(&Value::Str(format!("{:?}", base.clone())), &divisor.borrow().clone()), Value::Str(format!("{:?}", true_()))]);
+    let mut divisor: Rt<Value> = rt(Value::Str(format!("{:?}", pow10Int64(unimplemented!("call to unresolved member/class `int64`")))));
+    return Value::array(vec![Value::div(&Value::Str(format!("{:?}", base.clone())), &divisor.borrow().clone()), Value::py_mod(&Value::Str(format!("{:?}", base.clone())), &divisor.borrow().clone()), Value::Bool(true)]);
 }
 pub fn removeInt64Factors(value: i64, base: i64) -> Value {
     times = 0i64;
     result = value.clone();
-    let mut negative: Rt<Value> = rt(Value::Int((result() < 0i64) as i64));
+    let mut negative: Rt<Value> = rt(Value::Int((unimplemented!("reference to unresolved `result` (external)") < 0i64) as i64));
     if (negative.borrow().clone()).truthy() {
-        result = (-result());
+        result = (-unimplemented!("reference to unresolved `result` (external)"));
     }
     let __subj = base.clone();
     if __subj == 10i64 {
-        loop { if !((((result() >= 10i64)) && (((result() % 10i64) == 0i64)))) { break; }
+        loop { if !((((unimplemented!("reference to unresolved `result` (external)") >= 10i64)) && (((unimplemented!("reference to unresolved `result` (external)") % 10i64) == 0i64)))) { break; }
             times += 1;
-            result = (result() / 10i64);
+            result = (unimplemented!("reference to unresolved `result` (external)") / 10i64);
         }
     } else if __subj == 1024i64 {
-        loop { if !((((result() >= 1024i64)) && (((result() % 1024i64) == 0i64)))) { break; }
+        loop { if !((((unimplemented!("reference to unresolved `result` (external)") >= 1024i64)) && (((unimplemented!("reference to unresolved `result` (external)") % 1024i64) == 0i64)))) { break; }
             times += 1;
-            result = (result() / 1024i64);
+            result = (unimplemented!("reference to unresolved `result` (external)") / 1024i64);
         }
     } else {
-        loop { if !((((result() >= base.clone())) && (((result() % base.clone()) == 0i64)))) { break; }
+        loop { if !((((unimplemented!("reference to unresolved `result` (external)") >= base.clone())) && (((unimplemented!("reference to unresolved `result` (external)") % base.clone()) == 0i64)))) { break; }
             times += 1;
-            result = (result() / base.clone());
+            result = (unimplemented!("reference to unresolved `result` (external)") / base.clone());
         }
     }
     if (negative.borrow().clone()).truthy() {
-        result = (-result());
+        result = (-unimplemented!("reference to unresolved `result` (external)"));
     }
-    return Value::array(vec![Value::Str(format!("{:?}", result())), Value::Str(format!("{:?}", times()))]);
+    return Value::array(vec![Value::Str(format!("{:?}", unimplemented!("reference to unresolved `result` (external)"))), Value::Str(format!("{:?}", unimplemented!("reference to unresolved `times` (external)")))]);
 }
 pub fn removeBigIntFactors(d: Rt<Int>, factor: Rt<Int>) -> Value {
     let mut q: Rt<Value> = rt(Value::Str(format!("{:?}", unimplemented!("method NewInt (unknown type)"))));
@@ -282,7 +282,7 @@ pub fn removeBigIntFactors(d: Rt<Int>, factor: Rt<Int>) -> Value {
             *q.borrow_mut() = Value::Str(format!("{:?}", d.clone()));
         }
     }
-    return Value::array(vec![Value::Str(format!("{:?}", d.clone())), Value::Str(format!("{:?}", times()))]);
+    return Value::array(vec![Value::Str(format!("{:?}", d.clone())), Value::Str(format!("{:?}", unimplemented!("reference to unresolved `times` (external)")))]);
 }
 pub fn __init_module__() {
     {
@@ -297,10 +297,10 @@ pub fn __init_module__() {
         let mut decZero: Rt<Value> = rt(Value::Str(format!("{:?}", unimplemented!("method NewDec (unknown type)"))));
         let mut decOne: Rt<Value> = rt(Value::Str(format!("{:?}", unimplemented!("method NewDec (unknown type)"))));
         let mut maxAllowed: Rt<Value> = rt(Value::Str(format!("{:?}", rt(infDecAmount {  }))));
-        let mut MaxMilliValue: Rt<Value> = rt(Value::Str(format!("{:?}", int64((((1i64 << 63i64) - 1i64) / 1000i64)))));
+        let mut MaxMilliValue: Rt<Value> = rt(Value::Str(format!("{:?}", unimplemented!("call to unresolved member/class `int64`"))));
     }
     {
-        let mostNegative: Rt<Value> = rt(Value::Int((-(mostPositive() + 1i64)) as i64));
+        let mostNegative: Rt<Value> = rt(Value::Int((-(unimplemented!("reference to unresolved `mostPositive` (external)") + 1i64)) as i64));
     }
     {
         let mostPositive: Rt<Value> = rt(Value::Int(((1i64 << 63i64) - 1i64) as i64));

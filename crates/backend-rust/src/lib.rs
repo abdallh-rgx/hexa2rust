@@ -44,6 +44,7 @@ pub fn generate_with(module: &Module, opts: Options) -> String {
         needs_entries: false,
         needs_indices: false,
         defer_stack: vec![],
+        method_emitted: Map::new(),
     };
     g.collect_symbols();
     g.gen();
@@ -75,6 +76,16 @@ struct Scope {
     ret_ty: Option<Ty>,
 }
 
+/// Emitted-name registry entry for a class method, used to resolve
+/// unqualified calls (`parseReader(...)` -> `JsonParser_parseReader_2(...)`).
+#[derive(Clone)]
+struct RegFn {
+    emitted: String,
+    arity: usize,
+    params: Vec<Ty>,
+    is_static: bool,
+}
+
 struct Gen<'a> {
     module: &'a Module,
     dynamic: bool,
@@ -88,6 +99,8 @@ struct Gen<'a> {
     needs_indices: bool,
     needs_entries: bool,
     defer_stack: Vec<Vec<String>>,
+    /// (class, method-name) -> emitted variants (overloads included)
+    method_emitted: Map<(String, String), Vec<RegFn>>,
 }
 
 impl<'a> Gen<'a> {
@@ -592,6 +605,23 @@ impl<'a> Gen<'a> {
             c2
         };
         let c = &c;
+        // register method signatures for unqualified call resolution
+        for m in &c.methods {
+            let emitted = if m.is_static {
+                rust_ident(&format!("{}_{}", c.name, m.name))
+            } else {
+                format!("m_{}", rust_ident(&m.name))
+            };
+            self.method_emitted
+                .entry((c.name.clone(), m.name.clone()))
+                .or_default()
+                .push(RegFn {
+                    emitted,
+                    arity: m.params.len(),
+                    params: m.params.iter().map(|p| p.ty.clone()).collect(),
+                    is_static: m.is_static,
+                });
+        }
         self.w(&format!("impl {} {{", cname));
         self.indent += 1;
         let mut has_method = false;
@@ -641,7 +671,7 @@ impl<'a> Gen<'a> {
             }
             let mut f = m.clone();
             f.name = format!("{}_{}", c.name, m.name);
-            self.gen_typed_function(&f, None);
+            self.gen_typed_function(&f, Some(c.name.clone()));
         }
     }
 
@@ -893,6 +923,10 @@ impl<'a> Gen<'a> {
             scope.params.insert(p.name.clone());
         }
         scope.ret_ty = Some(f.ret.clone());
+        if let Some(cn) = _class_of {
+            scope.class_of = Some(cn);
+            scope.is_method = true;
+        }
         let saved = std::mem::replace(&mut self.scope, scope);
         self.defer_stack.push(vec![]);
         let body = f.body.clone();
@@ -1117,8 +1151,10 @@ impl<'a> Gen<'a> {
                     let v = self.expr(e);
                     self.w(&format!("panic!(\"{{}}\", {}.display());", v));
                 } else {
+                    // typed values are not guaranteed Display; {:?} works for
+                    // every generated/stubbed type (they all derive Debug)
                     let v = self.expr_typed(e, &Ty::Any);
-                    self.w(&format!("panic!(\"{{}}\", {});", v));
+                    self.w(&format!("panic!(\"{{:?}}\", {});", v));
                 }
             }
             Stmt::Try { body, catches, finally } => {
@@ -1139,6 +1175,7 @@ impl<'a> Gen<'a> {
                     needs_indices: false,
                     needs_entries: false,
                     defer_stack: vec![],
+                    method_emitted: self.method_emitted.clone(),
                 };
                 for s in b {
                     tmp.stmt(s);
@@ -2004,6 +2041,7 @@ impl<'a> Gen<'a> {
                     needs_indices: false,
                     needs_entries: false,
                     defer_stack: vec![],
+                    method_emitted: self.method_emitted.clone(),
                 };
                 for p in params {
                     let pid = rust_ident(&p.name);
@@ -2194,8 +2232,20 @@ impl<'a> Gen<'a> {
                         }
                     }
                 }
+                if !name.starts_with("__") {
+                    return format!(
+                        "unimplemented!(\"reference to unresolved `{}` (external/inherited)\")",
+                        name
+                    );
+                }
                 format!("{}()", id)
             } else {
+                if !name.starts_with("__") {
+                    return format!(
+                        "unimplemented!(\"reference to unresolved `{}` (external)\")",
+                        name
+                    );
+                }
                 format!("{}()", id)
             }
         }
@@ -2559,6 +2609,7 @@ impl<'a> Gen<'a> {
                     needs_indices: false,
                     needs_entries: false,
                     defer_stack: vec![],
+                    method_emitted: self.method_emitted.clone(),
                 };
                 match value {
                     Some(v) => {
@@ -2667,6 +2718,73 @@ impl<'a> Gen<'a> {
                 .map_or(false, |t| matches!(t, Ty::Str)))
     }
 
+    /// Choose the overload matching the call's arity (and, when possible,
+    /// the class-type of identifier arguments). `None` = no variant fits.
+    fn pick_overload<'x>(
+        list: &'x [RegFn],
+        args: &[Expr],
+        locals: &Map<String, Ty>,
+        classes: &Map<String, &'x ClassDecl>,
+    ) -> Option<&'x RegFn> {
+        fn unwrap_arg(e: &Expr) -> &Expr {
+            let mut cur = e;
+            for _ in 0..4 {
+                match cur {
+                    Expr::Paren(inner) | Expr::Named { e: inner, .. } => cur = inner,
+                    Expr::Method { obj, name, .. } if name == "clone" => cur = obj,
+                    _ => break,
+                }
+            }
+            cur
+        }
+        let arg_ty = |e: &Expr| -> Option<Ty> {
+            match unwrap_arg(e) {
+                Expr::Ident(n) => locals.get(n).cloned(),
+                Expr::Str(_) => Some(Ty::Str),
+                Expr::Int(_) => Some(Ty::Int),
+                Expr::Bool(_) => Some(Ty::Bool),
+                _ => None,
+            }
+        };
+        let is_subclass = |child: &str, parent: &str| -> bool {
+            let mut cur = child.to_string();
+            for _ in 0..8 {
+                let ext = classes.get(cur.as_str()).and_then(|c| c.extends.clone());
+                match ext {
+                    Some(p) if p == parent => return true,
+                    Some(p) => cur = p,
+                    None => return false,
+                }
+            }
+            false
+        };
+        let arity_ok: Vec<&RegFn> = list.iter().filter(|e| e.arity == args.len()).collect();
+        if arity_ok.is_empty() {
+            return None;
+        }
+        if arity_ok.len() == 1 {
+            return Some(arity_ok[0]);
+        }
+        // prefer variants whose class-typed parameters match the arguments
+        for e in &arity_ok {
+            let matched = args
+                .iter()
+                .zip(e.params.iter())
+                .all(|(arg, pt)| match (arg_ty(arg), pt) {
+                    (Some(Ty::Class(an)) | Some(Ty::Named(an)), Ty::Class(pn)) => {
+                        an == *pn || is_subclass(&an, pn)
+                    }
+                    (Some(Ty::Str), Ty::Str) | (Some(Ty::Int), Ty::Int) | (Some(Ty::Bool), Ty::Bool) => true,
+                    (Some(Ty::Str), _) | (Some(Ty::Int), _) | (Some(Ty::Bool), _) => false,
+                    _ => true,
+                });
+            if matched {
+                return Some(e);
+            }
+        }
+        None
+    }
+
     fn typed_call(&mut self, callee: &Expr, args: &[Expr]) -> String {
         if let Expr::Ident(name) = callee {
             let a: Vec<String> = args.iter().map(|x| self.expr_typed(x, &Ty::Any)).collect();
@@ -2715,6 +2833,20 @@ impl<'a> Gen<'a> {
                     );
                 }
                 "abs" => return format!("{}.abs()", a[0]),
+                // Kotlin infix bitwise functions (a and b, a shl b, ...)
+                "and" | "or" | "xor" | "shl" | "shr" | "ushr" => {
+                    if a.len() == 2 {
+                        let op = match name.as_str() {
+                            "and" => "&",
+                            "or" => "|",
+                            "xor" => "^",
+                            "shl" => "<<",
+                            "shr" => ">>",
+                            _ => ">>>",
+                        };
+                        return format!("({} {} {})", a[0], op, a[1]);
+                    }
+                }
                 _ => {}
             }
             if self.functions.contains(name) {
@@ -2782,6 +2914,58 @@ impl<'a> Gen<'a> {
                     return format!("rt({} {{ {} }})", cname, sets.join(", "));
                 }
                 return format!("rt({}::new())", cname);
+            }
+            // Unqualified same-class members: implicit-`this` property read,
+            // instance-method call, static-method call (Java/Kotlin).
+            if let Some(cname) = self.scope.class_of.clone() {
+                if args.is_empty() {
+                    if let Some(c) = self.classes.get(&cname) {
+                        if c.fields.iter().any(|f| f.name == *name) {
+                            return format!("this.borrow().{}.clone()", rust_ident(name));
+                        }
+                    }
+                }
+                for attempt in 0..9usize {
+                    let key = if attempt == 0 {
+                        name.clone()
+                    } else {
+                        format!("{}_{}", name, attempt + 1)
+                    };
+                    let found = self
+                        .method_emitted
+                        .get(&(cname.clone(), key))
+                        .and_then(|list| {
+                            Self::pick_overload(list, args, &self.scope.locals, &self.classes)
+                        });
+                    if let Some(e) = found {
+                        let args_s = a.join(", ");
+                        return if e.is_static {
+                            format!("{}({})", e.emitted, args_s)
+                        } else {
+                            // instance methods live in the class impl block
+                            format!(
+                                "{}::{}(&this{})",
+                                rust_type_name(&cname),
+                                e.emitted,
+                                if args_s.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!(", {}", args_s)
+                                }
+                            )
+                        };
+                    }
+                }
+            }
+            // Anything still unresolved here would emit a bare call to a
+            // name that does not exist in the generated module — an external
+            // constant, inherited member, or unsupported overload. Emit an
+            // honest stub instead of code that cannot compile.
+            if !name.starts_with("__") {
+                return format!(
+                    "unimplemented!(\"call to unresolved member/class `{}`\")",
+                    name
+                );
             }
             return format!("{}({})", rust_ident(name), a.join(", "));
         }

@@ -59,39 +59,39 @@ impl JsonParser {
 }
 impl JsonParser {
     pub fn m_parse(this: &Rt<JsonParser>, json: String) -> Rt<JsonElement> {
-        return parseString(json.clone());
+        return JsonParser_parseString(json.clone());
     }
     pub fn m_parse_2(this: &Rt<JsonParser>, json: Rt<Reader>) -> Rt<JsonElement> {
-        return parseReader(json.clone());
+        return JsonParser_parseReader(json.clone());
     }
     pub fn m_parse_3(this: &Rt<JsonParser>, json: Rt<JsonReader>) -> Rt<JsonElement> {
-        return parseReader(json.clone());
+        return JsonParser_parseReader(json.clone());
     }
 }
 pub fn JsonParser_parseString(json: String) -> Rt<JsonElement> {
-    return parseReader(rt(StringReader::new()));
+    return JsonParser_parseReader(rt(StringReader::new()));
 }
 pub fn JsonParser_parseReader(reader: Rt<Reader>) -> Rt<JsonElement> {
     __try__(|| {
         let mut jsonReader: Rt<JsonReader> = rt(JsonReader::new());
-        let mut element: Rt<JsonElement> = parseReader(jsonReader.clone());
-        if (((!unimplemented!("method isJsonNull (unknown type)"))) && ((unimplemented!("method peek (unknown type)") != JsonToken().borrow().END_DOCUMENT.clone()))) {
-            panic!("{}", rt(JsonSyntaxException::new()));
+        let mut element: Rt<JsonElement> = JsonParser_parseReader(jsonReader.clone());
+        if (((!unimplemented!("method isJsonNull (unknown type)"))) && ((unimplemented!("method peek (unknown type)") != unimplemented!("reference to unresolved `JsonToken` (external/inherited)").borrow().END_DOCUMENT.clone()))) {
+            panic!("{:?}", rt(JsonSyntaxException::new()));
         }
         return element.clone();
     }, |e: String| {
-        panic!("{}", rt(JsonSyntaxException::new()));
+        panic!("{:?}", rt(JsonSyntaxException::new()));
     });
 }
 pub fn JsonParser_parseReader_2(reader: Rt<JsonReader>) -> Rt<JsonElement> {
     let mut strictness: Rt<Strictness> = unimplemented!("method getStrictness (unknown type)");
-    if (strictness.clone() == Strictness().borrow().LEGACY_STRICT.clone()) {
+    if (strictness.clone() == unimplemented!("reference to unresolved `Strictness` (external/inherited)").borrow().LEGACY_STRICT.clone()) {
         let _ = unimplemented!("method setStrictness (unknown type)");
     }
     __try__(|| {
         return unimplemented!("method parse (unknown type)");
     }, |e: String| {
-        panic!("{}", rt(JsonParseException::new()));
+        panic!("{:?}", rt(JsonParseException::new()));
     });
     let _ = unimplemented!("method setStrictness (unknown type)");
 }

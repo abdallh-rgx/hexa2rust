@@ -26,19 +26,19 @@ impl NiaApplication {
 impl NiaApplication {
     pub fn m_onCreate(this: &Rt<NiaApplication>) {
         let _ = unimplemented!("method onCreate (unknown type)");
-        let _ = setStrictModePolicy();
+        let _ = NiaApplication::m_setStrictModePolicy(&this);
         let _ = unimplemented!("method initialize (unknown type)");
-        let _ = profileVerifierLogger();
+        let _ = this.borrow().profileVerifierLogger.clone();
     }
     pub fn m_newImageLoader(this: &Rt<NiaApplication>) -> Rt<ImageLoader> {
         return this.borrow().imageLoader.clone().borrow().get(&Default::default()).cloned().unwrap_or_default();
     }
     pub fn m_isDebuggable(this: &Rt<NiaApplication>) -> bool {
-        return (0i64 != applicationInfo().borrow().flags.clone());
-        let _ = and();
-        let _ = Value::get_field(&ApplicationInfo(), "FLAG_DEBUGGABLE");
+        return (0i64 != unimplemented!("reference to unresolved `applicationInfo` (external/inherited)").borrow().flags.clone());
+        let _ = unimplemented!("reference to unresolved `and` (external/inherited)");
+        let _ = Value::get_field(&unimplemented!("reference to unresolved `ApplicationInfo` (external/inherited)"), "FLAG_DEBUGGABLE");
     }
     pub fn m_setStrictModePolicy(this: &Rt<NiaApplication>) {
-        let _ = (if isDebuggable() { Value::call_method(&StrictMode(), "setThreadPolicy", vec![Value::call_method(&Value::call_method(&Value::call_method(&Value::call(&Builder(), vec![]), "detectAll", vec![]), "penaltyLog", vec![]), "build", vec![])]) } else { Value::Undefined });
+        let _ = (if NiaApplication::m_isDebuggable(&this) { Value::call_method(&unimplemented!("reference to unresolved `StrictMode` (external/inherited)"), "setThreadPolicy", vec![Value::call_method(&Value::call_method(&Value::call_method(&Value::call(&unimplemented!("reference to unresolved `Builder` (external/inherited)"), vec![]), "detectAll", vec![]), "penaltyLog", vec![]), "build", vec![])]) } else { Value::Undefined });
     }
 }

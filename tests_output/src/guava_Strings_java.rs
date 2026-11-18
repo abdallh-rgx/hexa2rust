@@ -45,7 +45,7 @@ pub fn Strings_isNullOrEmpty(string: String) -> bool {
     return unimplemented!("method stringIsNullOrEmpty (unknown type)");
 }
 pub fn Strings_padStart(string: String, minLength: i64, padChar: char) -> String {
-    let _ = checkNotNull(string.clone());
+    let _ = unimplemented!("call to unresolved member/class `checkNotNull`");
     if (string.clone().borrow().len() >= minLength.clone()) {
         return string.clone();
     }
@@ -59,7 +59,7 @@ pub fn Strings_padStart(string: String, minLength: i64, padChar: char) -> String
     return format!("{:?}", sb.clone());
 }
 pub fn Strings_padEnd(string: String, minLength: i64, padChar: char) -> String {
-    let _ = checkNotNull(string.clone());
+    let _ = unimplemented!("call to unresolved member/class `checkNotNull`");
     if (string.clone().borrow().len() >= minLength.clone()) {
         return string.clone();
     }
@@ -73,50 +73,50 @@ pub fn Strings_padEnd(string: String, minLength: i64, padChar: char) -> String {
     return format!("{:?}", sb.clone());
 }
 pub fn Strings_repeat(string: String, count: i64) -> String {
-    let _ = checkNotNull(string.clone());
+    let _ = unimplemented!("call to unresolved member/class `checkNotNull`");
     if (count.clone() <= 1i64) {
-        let _ = checkArgument((count.clone() >= 0i64), "invalid count: %s".to_string(), count.clone());
+        let _ = unimplemented!("call to unresolved member/class `checkArgument`");
         return (if (count.clone() == 0i64) { "".to_string() } else { string.clone() });
     }
     let mut len: i64 = string.clone().borrow().len();
     let mut longSize: i64 = ((len.clone() as i64) * (count.clone() as i64));
     let mut size: i64 = (longSize.clone() as i64);
     if (size.clone() != longSize.clone()) {
-        panic!("{}", rt(ArrayIndexOutOfBoundsException::new()));
+        panic!("{:?}", rt(ArrayIndexOutOfBoundsException::new()));
     }
     let mut array: Rt<Vec<char>> = __new_array__(size.clone());
     let _ = unimplemented!("method getChars (unknown type)");
     let mut n: i64 = 0i64;
     n = len.clone();
     loop { if !((n.clone() < (size.clone() - n.clone()))) { break; }
-        let _ = arraycopy(array.clone(), 0i64, array.clone(), n.clone(), n.clone());
+        let _ = unimplemented!("call to unresolved member/class `arraycopy`");
         n = (n.clone() << 1i64);
     }
-    let _ = arraycopy(array.clone(), 0i64, array.clone(), n.clone(), (size.clone() - n.clone()));
+    let _ = unimplemented!("call to unresolved member/class `arraycopy`");
     return rt(String::new());
 }
 pub fn Strings_commonPrefix(a: String, b: String) -> String {
-    let _ = checkNotNull(a.clone());
-    let _ = checkNotNull(b.clone());
+    let _ = unimplemented!("call to unresolved member/class `checkNotNull`");
+    let _ = unimplemented!("call to unresolved member/class `checkNotNull`");
     let mut maxPrefixLength: i64 = a.clone().borrow().len().min(b.clone().borrow().len());
     let mut p: i64 = 0i64;
     loop { if !((((p.clone() < maxPrefixLength.clone())) && ((unimplemented!("method charAt (unknown type)") == unimplemented!("method charAt (unknown type)"))))) { break; }
         p += 1;
     }
-    if ((validSurrogatePairAt(a.clone(), (p.clone() - 1i64))) || (validSurrogatePairAt(b.clone(), (p.clone() - 1i64)))) {
+    if ((Strings_validSurrogatePairAt(a.clone(), (p.clone() - 1i64))) || (Strings_validSurrogatePairAt(b.clone(), (p.clone() - 1i64)))) {
         p -= 1;
     }
     return format!("{:?}", unimplemented!("method subSequence (unknown type)"));
 }
 pub fn Strings_commonSuffix(a: String, b: String) -> String {
-    let _ = checkNotNull(a.clone());
-    let _ = checkNotNull(b.clone());
+    let _ = unimplemented!("call to unresolved member/class `checkNotNull`");
+    let _ = unimplemented!("call to unresolved member/class `checkNotNull`");
     let mut maxSuffixLength: i64 = a.clone().borrow().len().min(b.clone().borrow().len());
     let mut s: i64 = 0i64;
     loop { if !((((s.clone() < maxSuffixLength.clone())) && ((unimplemented!("method charAt (unknown type)") == unimplemented!("method charAt (unknown type)"))))) { break; }
         s += 1;
     }
-    if ((validSurrogatePairAt(a.clone(), ((a.clone().borrow().len() - s.clone()) - 1i64))) || (validSurrogatePairAt(b.clone(), ((b.clone().borrow().len() - s.clone()) - 1i64)))) {
+    if ((Strings_validSurrogatePairAt(a.clone(), ((a.clone().borrow().len() - s.clone()) - 1i64))) || (Strings_validSurrogatePairAt(b.clone(), ((b.clone().borrow().len() - s.clone()) - 1i64)))) {
         s -= 1;
     }
     return format!("{:?}", unimplemented!("method subSequence (unknown type)"));
@@ -126,7 +126,7 @@ pub fn Strings_validSurrogatePairAt(string: String, index: i64) -> bool {
 }
 pub fn Strings_lenientFormat(template: String, args: Rt<Vec<Rt<Object>>>) -> String {
     template = unimplemented!("method valueOf (unknown type)");
-    if (args.clone() == null()) {
+    if (args.clone() == unimplemented!("reference to unresolved `null` (external/inherited)")) {
         args = rt(Object::new());
     }
     let mut builder: Rt<StringBuilder> = rt(StringBuilder::new());
@@ -139,7 +139,7 @@ pub fn Strings_lenientFormat(template: String, args: Rt<Vec<Rt<Object>>>) -> Str
         }
         let _ = { builder.clone().borrow_mut().push(template.clone()); };
         i += 1;
-        let _ = { builder.clone().borrow_mut().push(lenientToString(args.clone().borrow()[i as usize].clone())); };
+        let _ = { builder.clone().borrow_mut().push(Strings_lenientToString(args.clone().borrow()[i as usize].clone())); };
         templateStart = (placeholderStart.clone() + 2i64);
     }
     let _ = { builder.clone().borrow_mut().push(template.clone()); };
@@ -147,7 +147,7 @@ pub fn Strings_lenientFormat(template: String, args: Rt<Vec<Rt<Object>>>) -> Str
         let mut prefix: String = " [".to_string();
         loop { if !((i.clone() < args.clone().borrow().length.clone())) { break; }
             let _ = { builder.clone().borrow_mut().push(prefix.clone()); };
-            let _ = { builder.clone().borrow_mut().push(lenientToString(args.clone().borrow()[i.clone() as usize].clone())); };
+            let _ = { builder.clone().borrow_mut().push(Strings_lenientToString(args.clone().borrow()[i.clone() as usize].clone())); };
             prefix = ", ".to_string();
             i += 1;
         }
@@ -156,7 +156,7 @@ pub fn Strings_lenientFormat(template: String, args: Rt<Vec<Rt<Object>>>) -> Str
     return format!("{:?}", builder.clone());
 }
 pub fn Strings_lenientToString(o: Rt<Object>) -> String {
-    if (o.clone() == null()) {
+    if (o.clone() == unimplemented!("reference to unresolved `null` (external/inherited)")) {
         return "null".to_string();
     }
     __try__(|| {

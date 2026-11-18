@@ -38,6 +38,10 @@ Recent backend fixes behind the 8/14 → 10/14 jump:
 - All names assigned anywhere in a function/closure body are hoisted and pre-declared at the top (Python function-scoped-local semantics) — fixes branch-scoped bindings (`res` in `_compile_pattern`).
 - Closures capture enclosing cells by CLONE (pre-clone + shadow-bind) instead of stealing them by `move` — fixes Rc moves out of loop bodies (`Value::func(move …)` capturing `chunks`).
 - TS/JS `++i` / `i++` statements no longer emit a phantom `let _ = i();` call.
+- Method-call resolution: emitted-name registry per class + unqualified same-class member resolution (implicit-`this` field/method calls, static methods, overload pick by arity and class-type match with `extends` awareness), Kotlin infix bitwise (`and`/`or`/`shl`/…), typed `throw` uses `{:?}`. Remaining error counts dropped: guava 60→42, k8s 96→36, gson 12→7, nia 30→6.
+- Keyword-table lexing bugs fixed: Kotlin `import` was lexed as an identifier (module imports emitted as expression calls); Go `true`/`false`/`nil` likewise (booleans stubbed as unknown names).
+
+Known boundary after this round: `unimplemented!` stubs for external/inherited references still need type-aware emission (they fail as method receivers, `!` type); Go package-level consts/vars are not lowered yet (`mostNegative`, `result`, `times` in k8s math); Java subtype arguments (`StringReader` → `Reader`) need upcast modelling.
 
 ## Tier 4 — Z3 formal verification
 

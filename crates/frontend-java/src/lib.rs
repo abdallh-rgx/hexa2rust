@@ -617,6 +617,18 @@ impl JavaParser {
                 }
             }
             let ty = self.parse_type()?;
+            // trailing annotations after the type: `Object @Nullable ...`
+            while self.at_punct("@") {
+                self.bump();
+                if self.cur().kind == Tok::Ident {
+                    self.bump();
+                }
+                if self.at_punct("(") {
+                    self.skip_balanced()?;
+                }
+            }
+            // `...` may appear before the name (annotated variadics)
+            let was_variadic = self.eat_punct("...");
             let name = self.expect_ident()?;
             let mut pty = ty;
             while self.at_punct("[") && self.nxt(1).is_punct("]") {
@@ -624,8 +636,10 @@ impl JavaParser {
                 self.bump();
                 pty = Ty::Array(Box::new(pty));
             }
-            if self.at_punct("...") {
-                self.bump();
+            if was_variadic || self.at_punct("...") {
+                if !was_variadic {
+                    self.bump();
+                }
                 variadic = Some(name.clone());
                 params.push(Param {
                     name,
@@ -927,8 +941,9 @@ impl JavaParser {
             }
         }
         self.pos = save;
-        // classic for
+        // classic for (the empty-init branch consumes its own ';')
         let init: Vec<Stmt> = if self.at_punct(";") {
+            self.bump();
             vec![]
         } else if self.is_type_lookahead() {
             let ty = self.parse_type()?;
@@ -1486,16 +1501,14 @@ impl JavaParser {
                         self.skip_generics()?;
                     }
                     // qualified: new a.b.C()
-                    let mut cname = match ty {
-                        Ty::Class(ref n) => n.clone(),
-                        _ => String::new(),
+                    let mut cname = match &ty {
+                        Ty::Class(n) => n.clone(),
+                        Ty::Str => "String".to_string(),
+                        _ => "Object".to_string(),
                     };
                     while self.eat_punct(".") {
                         let seg = self.expect_ident()?;
                         cname = seg; // use last segment
-                    }
-                    if cname.is_empty() {
-                        return Err(self.unsupported("new on primitive/array type"));
                     }
                     if self.at_punct("(") {
                         self.bump();

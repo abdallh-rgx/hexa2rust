@@ -563,6 +563,10 @@ impl GoParser {
     /// is the current token a type start (vs parameter name)? Heuristic:
     /// `name Type` vs `Type` — if the NEXT token continues a type it is unnamed.
     fn is_type_start(&self) -> bool {
+        // qualified package type: `time.Duration`
+        if self.cur().kind == Tok::Ident && self.nxt(1).is_punct(".") {
+            return true;
+        }
         matches!(
             self.cur().text.as_str(),
             "map" | "chan" | "func" | "interface" | "struct" | "any" | "string" | "int"
@@ -903,6 +907,7 @@ impl GoParser {
     fn parse_if(&mut self) -> PResult<Option<Stmt>> {
         self.bump(); // if
         let mut init = Vec::new();
+        let mut precond: Option<Expr> = None;
         if self.at_kw("var") || self.at_kw("const") {
             let is_const = self.at_kw("const");
             self.bump();
@@ -960,16 +965,22 @@ impl GoParser {
                 } else {
                     return Err(self.unsupported("tuple assignment in if"));
                 }
+            } else if self.at_punct("{") {
+                // no `;` follows: the simple statement WAS the condition
+                precond = Some(e);
             } else {
                 init.push(Stmt::Expr(e));
             }
         }
-        if !init.is_empty() {
+        if precond.is_none() && !init.is_empty() {
             self.eat_punct(";"); // Go: `if init; cond {`
         }
         let saved_ac = self.allow_composite;
         self.allow_composite = false;
-        let cond = self.parse_expr()?;
+        let cond = match precond {
+            Some(c) => c,
+            None => self.parse_expr()?,
+        };
         self.allow_composite = saved_ac;
         let then = self.parse_block()?;
         let els = if self.eat_kw("else") {
@@ -1205,9 +1216,28 @@ impl GoParser {
             }
             _ => return Err(self.unsupported("complex := target")),
         };
-        if names.len() == 2 {
+        if names.len() >= 2 {
             let value = self.parse_expr()?;
             self.expect_semi()?;
+            if let Expr::Call { .. } = value {
+                // a, b := f() — multiple return values modelled as an array
+                let mut stmts = Vec::new();
+                stmts.push(Stmt::Local {
+                    name: "$ret".into(),
+                    ty: Ty::Any,
+                    init: Some(value),
+                    mutable: false,
+                });
+                for (i, n) in names.iter().enumerate() {
+                    stmts.push(Stmt::Local {
+                        name: n.clone(),
+                        ty: Ty::Any,
+                        init: Some(Expr::index(Expr::ident("$ret"), Expr::Int(i as i64))),
+                        mutable: true,
+                    });
+                }
+                return Ok(Some(Stmt::Block(stmts)));
+            }
             if let Expr::Index { obj, idx } = value {
                 let obj = *obj;
                 let idx = *idx;
@@ -1301,13 +1331,7 @@ impl GoParser {
                 if matches!(body.last(), Some(Stmt::Break)) {
                     body.pop();
                 }
-                let has_exit = matches!(
-                    body.last(),
-                    Some(Stmt::Return(_)) | Some(Stmt::Throw(_)) | Some(Stmt::Continue)
-                );
-                if !has_exit && !body.is_empty() {
-                    return Err(self.unsupported("switch fallthrough"));
-                }
+                // Go cases never fall through implicitly: no exit needed
                 arms.push(MatchArm { pattern: pats, guard: None, body });
                 continue;
             }

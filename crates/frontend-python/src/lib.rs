@@ -443,6 +443,27 @@ impl PyParser {
             Err(self.err(format!("expected identifier, found '{}'", self.cur().text)))
         }
     }
+    fn skip_annotation(&mut self) -> PResult<()> {
+        let mut depth = 0i32;
+        while self.cur().kind != PTok::Eof {
+            let t = self.cur().clone();
+            if t.kind == PTok::Punct {
+                if t.text == "[" {
+                    depth += 1;
+                } else if t.text == "]" {
+                    depth -= 1;
+                } else if depth == 0 && (t.text == "=" || t.text == "," || t.text == ")") {
+                    break;
+                }
+            }
+            if depth == 0 && t.kind == PTok::Newline {
+                break;
+            }
+            self.bump();
+        }
+        Ok(())
+    }
+
     fn skip_bracketed(&mut self) -> PResult<()> {
         self.expect_punct("[")?;
         let mut depth = 1;
@@ -1055,11 +1076,24 @@ impl PyParser {
             if self.cur().kind == PTok::Eof {
                 return Err(self.err("unexpected end of parameter list"));
             }
-            if self.eat_punct("*") {
-                if self.eat_punct("*") {
-                    return Err(self.unsupported("**kwargs"));
-                }
+            if self.at_punct("**") {
+                // **kwargs: accepted and erased (packed into a dict param)
+                self.bump();
                 let n = self.expect_ident()?;
+                if self.eat_punct(":") {
+                    self.skip_annotation()?;
+                }
+                params.push(Param::new(&n, Ty::Any));
+                if !self.eat_punct(",") {
+                    break;
+                }
+                continue;
+            }
+            if self.eat_punct("*") {
+                let n = self.expect_ident()?;
+                if self.eat_punct(":") {
+                    self.skip_annotation()?;
+                }
                 params.push(Param {
                     name: n,
                     ty: Ty::Any,
@@ -1080,7 +1114,7 @@ impl PyParser {
             }
             let pname = self.expect_ident()?;
             if self.eat_punct(":") {
-                let _ = self.parse_expr(false)?; // annotation erased
+                self.skip_annotation()?; // annotation erased
             }
             let default = if self.eat_punct("=") {
                 Some(self.parse_expr(false)?)
@@ -1489,8 +1523,14 @@ impl PyParser {
             if self.eat_punct("*") {
                 let e = self.parse_lambda()?;
                 args.push(Expr::Spread(Box::new(e)));
-            } else if self.eat_punct("**") {
-                return Err(self.unsupported("**kwargs call"));
+            } else if self.at_punct("**") {
+                // **kwargs at call site: pass the dict as a keyword-args value
+                self.bump();
+                let e = self.parse_lambda()?;
+                args.push(Expr::Named {
+                    name: "__kwargs__".into(),
+                    e: Box::new(e),
+                });
             } else if self.cur().kind == PTok::Ident
                 && self.nxt(1).kind == PTok::Punct
                 && self.nxt(1).text == "="

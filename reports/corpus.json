@@ -2,8 +2,8 @@
   "files": [
     {"file": "cpython_fnmatch.py", "lang": "python", "lines": 209, "ok": true, "note": "OK  lang=python lines=209 decls=12 ir_nodes=617 rust_lines=273"},
     {"file": "gson_JsonParser.java", "lang": "java", "lines": 178, "ok": true, "note": "OK  lang=java lines=178 decls=1 ir_nodes=65 rust_lines=49"},
-    {"file": "guava_Strings.java", "lang": "java", "lines": 319, "ok": false, "note": "174:22: unsupported Java syntax: new on primitive/array type"},
-    {"file": "k8s_math.go", "lang": "go", "lines": 345, "ok": false, "note": "81:12: unexpected token '{'"},
+    {"file": "guava_Strings.java", "lang": "java", "lines": 319, "ok": true, "note": "OK  lang=java lines=319 decls=1 ir_nodes=467 rust_lines=152"},
+    {"file": "k8s_math.go", "lang": "go", "lines": 345, "ok": false, "note": "89:4: unexpected keyword 'return'"},
     {"file": "k8s_poll.go", "lang": "go", "lines": 315, "ok": false, "note": "46:13: expected ';' or newline, found ','"},
     {"file": "ksp_ApiFeatures.kt", "lang": "kotlin", "lines": 45, "ok": true, "note": "OK  lang=kotlin lines=45 decls=1 ir_nodes=4 rust_lines=5"},
     {"file": "ksp_ExitCode.kt", "lang": "kotlin", "lines": 11, "ok": true, "note": "OK  lang=kotlin lines=11 decls=2 ir_nodes=2 rust_lines=18"},
@@ -12,11 +12,11 @@
     {"file": "react_featureFlags.js", "lang": "javascript", "lines": 264, "ok": true, "note": "OK  lang=javascript lines=264 decls=57 ir_nodes=112 rust_lines=231"},
     {"file": "react_symbols.js", "lang": "javascript", "lines": 54, "ok": true, "note": "OK  lang=javascript lines=54 decls=24 ir_nodes=116 rust_lines=108"},
     {"file": "react_validType.js", "lang": "javascript", "lines": 89, "ok": true, "note": "OK  lang=javascript lines=89 decls=3 ir_nodes=149 rust_lines=39"},
-    {"file": "requests_structures.py", "lang": "python", "lines": 130, "ok": false, "note": "51:26: expected ']', found ','"},
+    {"file": "requests_structures.py", "lang": "python", "lines": 130, "ok": false, "note": "71:26: expected ')', found 'for'"},
     {"file": "vscode_charCode.ts", "lang": "typescript", "lines": 450, "ok": true, "note": "OK  lang=typescript lines=450 decls=1 ir_nodes=0 rust_lines=308"},
-    {"file": "vscode_marshalling.ts", "lang": "typescript", "lines": 84, "ok": false, "note": "52:12: unexpected token '<' in expression"}
+    {"file": "vscode_marshalling.ts", "lang": "typescript", "lines": 84, "ok": true, "note": "OK  lang=typescript lines=84 decls=7 ir_nodes=123 rust_lines=71"}
   ],
-  "pass": 10,
-  "fail": 5,
+  "pass": 12,
+  "fail": 3,
   "lines": 2595
 }

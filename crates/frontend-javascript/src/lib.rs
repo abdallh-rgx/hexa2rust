@@ -1692,6 +1692,14 @@ impl JsParser {
                 if t.text == "/" {
                     return Err(self.unsupported("regular expression literals"));
                 }
+                if t.text == "<" && self.ts {
+                    // legacy TS type assertion: <Type>expr
+                    self.bump();
+                    let _ = self.parse_ts_type()?;
+                    self.expect_punct(">")?;
+                    let e = self.parse_unary()?;
+                    return Ok(Expr::Cast { e: Box::new(e), ty: Ty::Any });
+                }
                 Err(self.err(format!("unexpected token '{}' in expression", t.text)))
             }
             _ => Err(self.err(format!("unexpected token '{}' in expression", t.text))),

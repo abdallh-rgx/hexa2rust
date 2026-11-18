@@ -501,7 +501,10 @@ pub fn parse_int_text(text: &str) -> Option<i64> {
     };
     let t = t.replace('_', "");
     if let Some(hex) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
-        return i64::from_str_radix(hex, 16).ok();
+        if let Ok(v) = i64::from_str_radix(hex, 16) {
+            return Some(v);
+        }
+        return u64::from_str_radix(hex, 16).ok().map(|v| v as i64);
     }
     if let Some(b) = t.strip_prefix("0b").or_else(|| t.strip_prefix("0B")) {
         return i64::from_str_radix(b, 2).ok();
@@ -509,7 +512,11 @@ pub fn parse_int_text(text: &str) -> Option<i64> {
     if let Some(o) = t.strip_prefix("0o").or_else(|| t.strip_prefix("0O")) {
         return i64::from_str_radix(o, 8).ok();
     }
-    t.parse::<i64>().ok()
+    if let Ok(v) = t.parse::<i64>() {
+        return Some(v);
+    }
+    // i64::MIN written as a positive literal with unary minus
+    t.parse::<u64>().ok().map(|v| v as i64)
 }
 
 pub fn parse_float_text(text: &str) -> Option<f64> {

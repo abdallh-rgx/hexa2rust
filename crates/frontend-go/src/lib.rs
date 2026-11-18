@@ -649,8 +649,21 @@ impl GoParser {
             let v = self.parse_type()?;
             return Ok(Ty::Map(Box::new(k), Box::new(v)));
         }
-        if self.eat_kw("chan") {
-            return Err(self.unsupported("channels"));
+        if self.at_kw("chan") {
+            // channel type: parse the element type, treat as Any
+            self.bump();
+            if self.at_punct("<-") {
+                self.bump();
+            }
+            let _ = self.parse_type()?;
+            return Ok(Ty::Any);
+        }
+        if self.at_punct("<-") {
+            // receive-only channel type <-chan T
+            self.bump();
+            self.eat_kw("chan");
+            let _ = self.parse_type()?;
+            return Ok(Ty::Any);
         }
         if self.eat_kw("func") {
             if self.at_punct("(") {
@@ -861,6 +874,68 @@ impl GoParser {
         }
         // simple statement sequence: expr or assignment or :=
         let first = self.parse_expr()?;
+        if self.at_punct(",") {
+            // multi-name short declaration: a, b := f() / a, b := m[k]
+            let mut names = match &first {
+                Expr::Ident(n) => vec![n.clone()],
+                _ => return Err(self.unsupported("complex := target")),
+            };
+            while self.eat_punct(",") {
+                match self.parse_expr()? {
+                    Expr::Ident(n) => names.push(n),
+                    _ => return Err(self.unsupported("complex := target")),
+                }
+            }
+            if self.at_punct("=") {
+                // tuple assignment / multi-return call consumption
+                self.bump();
+                let value = self.parse_expr()?;
+                self.expect_semi()?;
+                if matches!(value, Expr::Call { .. } | Expr::Method { .. }) {
+                    let mut stmts = Vec::new();
+                    stmts.push(Stmt::Local {
+                        name: "$ret".into(),
+                        ty: Ty::Any,
+                        init: Some(value),
+                        mutable: false,
+                    });
+                    for (i, n) in names.iter().enumerate() {
+                        stmts.push(Stmt::Assign {
+                            target: Expr::Ident(n.clone()),
+                            op: None,
+                            value: Expr::index(Expr::ident("$ret"), Expr::Int(i as i64)),
+                        });
+                    }
+                    return Ok(Some(Stmt::Block(stmts)));
+                }
+                let mut stmts = Vec::new();
+                let mut values = vec![value];
+                while self.eat_punct(",") {
+                    if self.at_punct("{") || self.cur().kind == Tok::Eof {
+                        break;
+                    }
+                    values.push(self.parse_expr()?);
+                }
+                self.expect_semi()?;
+                if values.len() == names.len() {
+                    for (n, v) in names.into_iter().zip(values.into_iter()) {
+                        stmts.push(Stmt::Assign {
+                            target: Expr::Ident(n),
+                            op: None,
+                            value: v,
+                        });
+                    }
+                    return Ok(Some(Stmt::Block(stmts)));
+                }
+                return Err(self.unsupported("mismatched tuple assignment"));
+            }
+            if !self.at_punct(":=") {
+                return Err(self.unsupported("tuple assignment"));
+            }
+            return self.parse_short_var_decl(Expr::Array(
+                names.into_iter().map(Expr::Ident).collect(),
+            ));
+        }
         if self.at_punct(":=") {
             return self.parse_short_var_decl(first);
         }
@@ -890,15 +965,38 @@ impl GoParser {
         }
         if self.at_punct("=") {
             self.bump();
-            let mut targets = vec![first];
             if self.at_kw("range") {
                 // handled by for
                 return Err(self.err("range in wrong position"));
             }
-            let value = self.parse_expr()?;
-            let _ = &mut targets;
+            // tuple assignment: a, b = x, y
+            let mut targets = vec![first];
+            while self.eat_punct(",") {
+                if self.at_punct("{") || self.cur().kind == Tok::Eof {
+                    break;
+                }
+                targets.push(self.parse_expr()?);
+            }
+            let mut values = vec![self.parse_expr()?];
+            while self.eat_punct(",") {
+                if self.at_punct("{") || self.cur().kind == Tok::Eof {
+                    break;
+                }
+                values.push(self.parse_expr()?);
+            }
             self.expect_semi()?;
-            return Ok(Some(Stmt::Assign { target: targets.pop().unwrap(), op: None, value }));
+            if targets.len() == values.len() && targets.len() > 1 {
+                let mut stmts = Vec::new();
+                let pairs: Vec<(Expr, Expr)> =
+                    targets.into_iter().zip(values.into_iter()).collect();
+                for (t, v) in pairs {
+                    stmts.push(Stmt::Assign { target: t, op: None, value: v });
+                }
+                return Ok(Some(Stmt::Block(stmts)));
+            }
+            let value = values.into_iter().next().unwrap();
+            let target = targets.pop().unwrap();
+            return Ok(Some(Stmt::Assign { target, op: None, value }));
         }
         self.expect_semi()?;
         Ok(Some(Stmt::Expr(first)))
@@ -914,7 +1012,11 @@ impl GoParser {
             init = self.parse_var_spec(is_const)?;
         } else if !self.at_punct("{") {
             let save = self.pos;
-            let e = self.parse_simple()?;
+            let saved_ac = self.allow_composite;
+            self.allow_composite = false;
+            let e = self.parse_simple();
+            self.allow_composite = saved_ac;
+            let e = e?;
             if self.at_punct(":=") {
                 if let Expr::Ident(name) = &e {
                     self.bump();
@@ -929,7 +1031,7 @@ impl GoParser {
                     return Err(self.unsupported("complex := in if"));
                 }
             } else if self.at_punct(",") {
-                // v, ok := m[k]
+                // v, ok := m[k]  |  a, b = f()  |  a, b = x, y
                 self.pos = save;
                 let names = self.parse_ident_list()?;
                 if self.at_punct(":=") {
@@ -956,11 +1058,53 @@ impl GoParser {
                                 init: Some(has),
                                 mutable: true,
                             });
+                        } else if matches!(value, Expr::Call { .. } | Expr::Method { .. }) {
+                            init.push(Stmt::Local {
+                                name: "$ret".into(),
+                                ty: Ty::Any,
+                                init: Some(value),
+                                mutable: false,
+                            });
+                            for (i, n) in names.iter().enumerate() {
+                                init.push(Stmt::Local {
+                                    name: n.clone(),
+                                    ty: Ty::Any,
+                                    init: Some(Expr::index(
+                                        Expr::ident("$ret"),
+                                        Expr::Int(i as i64),
+                                    )),
+                                    mutable: true,
+                                });
+                            }
                         } else {
                             return Err(self.unsupported("multiple return values"));
                         }
                     } else {
                         return Err(self.unsupported("multiple := targets"));
+                    }
+                } else if self.at_punct("=") {
+                    self.bump();
+                    let value = self.parse_expr()?;
+                    if matches!(value, Expr::Call { .. } | Expr::Method { .. }) {
+                        init.push(Stmt::Local {
+                            name: "$ret".into(),
+                            ty: Ty::Any,
+                            init: Some(value),
+                            mutable: false,
+                        });
+                        for (i, n) in names.iter().enumerate() {
+                            init.push(Stmt::Assign {
+                                target: Expr::Ident(n.clone()),
+                                op: None,
+                                value: Expr::index(Expr::ident("$ret"), Expr::Int(i as i64)),
+                            });
+                        }
+                    } else {
+                        init.push(Stmt::Assign {
+                            target: Expr::Ident(names[0].clone()),
+                            op: None,
+                            value,
+                        });
                     }
                 } else {
                     return Err(self.unsupported("tuple assignment in if"));
@@ -1036,7 +1180,11 @@ impl GoParser {
             && !self.at_punct("{")
         {
             let save = self.pos;
-            let e = self.parse_simple()?;
+            let saved_ac = self.allow_composite;
+            self.allow_composite = false;
+            let e = self.parse_simple();
+            self.allow_composite = saved_ac;
+            let e = e?;
             if self.at_punct(":=") {
                 if let Expr::Ident(name) = &e {
                     self.bump();
@@ -1219,7 +1367,7 @@ impl GoParser {
         if names.len() >= 2 {
             let value = self.parse_expr()?;
             self.expect_semi()?;
-            if let Expr::Call { .. } = value {
+            if matches!(value, Expr::Call { .. } | Expr::Method { .. }) {
                 // a, b := f() — multiple return values modelled as an array
                 let mut stmts = Vec::new();
                 stmts.push(Stmt::Local {
@@ -1285,8 +1433,13 @@ impl GoParser {
         self.bump(); // switch
         // optional init; then optional subject
         let mut init = Vec::new();
+        let mut presubject: Option<Expr> = None;
         if !self.at_punct("{") {
-            let e = self.parse_simple()?;
+            let saved_ac = self.allow_composite;
+            self.allow_composite = false;
+            let e = self.parse_simple();
+            self.allow_composite = saved_ac;
+            let e = e?;
             if self.at_punct(":=") {
                 self.bump();
                 let name = match &e {
@@ -1296,15 +1449,24 @@ impl GoParser {
                 let value = self.parse_simple()?;
                 init.push(Stmt::Local { name, ty: Ty::Any, init: Some(value), mutable: true });
                 self.expect_punct(";")?;
+            } else if self.at_punct("{") {
+                // no `;` follows: the simple statement WAS the subject
+                presubject = Some(e);
             } else {
                 init.push(Stmt::Expr(e));
                 self.expect_punct(";")?;
             }
         }
-        let subject = if self.at_punct("{") {
+        let subject = if presubject.is_some() {
+            presubject
+        } else if self.at_punct("{") {
             None
         } else {
-            Some(self.parse_expr()?)
+            let saved_ac = self.allow_composite;
+            self.allow_composite = false;
+            let e = self.parse_expr();
+            self.allow_composite = saved_ac;
+            Some(e?)
         };
         self.expect_punct("{")?;
         let mut arms: Vec<MatchArm> = Vec::new();

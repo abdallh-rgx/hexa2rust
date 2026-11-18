@@ -452,7 +452,9 @@ impl PyParser {
                     depth += 1;
                 } else if t.text == "]" {
                     depth -= 1;
-                } else if depth == 0 && (t.text == "=" || t.text == "," || t.text == ")") {
+                } else if depth == 0
+                    && (t.text == "=" || t.text == "," || t.text == ")" || t.text == ":")
+                {
                     break;
                 }
             }
@@ -604,7 +606,7 @@ impl PyParser {
             }
             return Ok(b);
         }
-        // simple statements on the same line
+        // simple statements on the same line (parse_stmt consumes the newline)
         let mut b = Vec::new();
         loop {
             if let Some(s) = self.parse_stmt()? {
@@ -615,7 +617,6 @@ impl PyParser {
             }
             break;
         }
-        self.expect_newline()?;
         Ok(b)
     }
 
@@ -1128,7 +1129,7 @@ impl PyParser {
         }
         self.expect_punct(")")?;
         if self.eat_punct("->") {
-            let _ = self.parse_expr(false)?; // return annotation erased
+            self.skip_annotation()?; // return annotation erased
         }
         let body = self.parse_block()?;
         let mut f = FunctionDecl::new(&name, params, Ty::Any, body);
@@ -1613,12 +1614,23 @@ impl PyParser {
                 _ => Err(self.err(format!("unexpected keyword '{}'", t.text))),
             },
             PTok::Punct => {
+                if t.text == "..." {
+                    // ellipsis body (typing.overload stubs)
+                    self.bump();
+                    return Ok(Expr::Unit);
+                }
                 if t.text == "(" {
                     self.bump();
                     if self.eat_punct(")") {
                         return Ok(Expr::Array(vec![])); // empty tuple
                     }
                     let e = self.parse_expr(true)?;
+                    // parenthesized generator expression: (x for y in z)
+                    if self.at_kw("for") {
+                        let comp = self.parse_comprehension(e)?;
+                        self.expect_punct(")")?;
+                        return Ok(comp);
+                    }
                     self.expect_punct(")")?;
                     return Ok(Expr::Paren(Box::new(e)));
                 }

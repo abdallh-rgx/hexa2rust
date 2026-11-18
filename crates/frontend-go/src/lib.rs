@@ -890,7 +890,6 @@ impl GoParser {
                 // tuple assignment / multi-return call consumption
                 self.bump();
                 let value = self.parse_expr()?;
-                self.expect_semi()?;
                 if matches!(value, Expr::Call { .. } | Expr::Method { .. }) {
                     let mut stmts = Vec::new();
                     stmts.push(Stmt::Local {

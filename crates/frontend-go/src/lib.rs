@@ -38,6 +38,8 @@ pub struct GoParser {
     file: String,
     imports: Vec<String>,
     classes: Vec<Decl>,
+    /// Ident{...} composite literals allowed (false in block-statement position)
+    allow_composite: bool,
     type_names: std::collections::HashSet<String>,
     /// methods to attach to classes after parsing
     pending_methods: Vec<(String, FunctionDecl)>,
@@ -53,6 +55,7 @@ pub fn parse_go(src: &str, file: &str) -> PResult<Module> {
         file: file.to_string(),
         imports: vec![],
         classes: vec![],
+        allow_composite: true,
         type_names: Default::default(),
         pending_methods: vec![],
     };
@@ -590,7 +593,8 @@ impl GoParser {
             }
             self.expect_punct(")")?;
             if tys.len() > 1 {
-                return Err(self.unsupported("multiple return values"));
+                // multiple return values: modelled as a dynamic Value array
+                return Ok(Ty::Any);
             }
             return Ok(tys.into_iter().next().unwrap_or(Ty::Void));
         }
@@ -698,7 +702,12 @@ impl GoParser {
             return Ok(Ty::Any);
         }
         if self.cur().kind == Tok::Ident || self.cur().kind == Tok::Keyword {
-            let name = self.bump().text;
+            let mut name = self.bump().text;
+            // qualified type: pkg.Type -> use the last segment
+            while self.at_punct(".") {
+                self.bump();
+                name = self.expect_ident()?;
+            }
             // generic instantiation List[T]
             if self.at_punct("[") {
                 self.skip_brackets()?;
@@ -730,7 +739,20 @@ impl GoParser {
                     let v = if self.at_punct("}") || self.at_punct(";") || self.cur().kind == Tok::Eof {
                         None
                     } else {
-                        Some(self.parse_expr()?)
+                        let first = self.parse_expr()?;
+                        if self.at_punct(",") {
+                            // multiple return values -> Value array
+                            let mut items = vec![first];
+                            while self.eat_punct(",") {
+                                if self.at_punct("}") || self.at_punct(";") {
+                                    break;
+                                }
+                                items.push(self.parse_expr()?);
+                            }
+                            Some(Expr::Array(items))
+                        } else {
+                            Some(first)
+                        }
                     };
                     self.expect_semi()?;
                     return Ok(Some(Stmt::Return(v)));
@@ -945,7 +967,10 @@ impl GoParser {
         if !init.is_empty() {
             self.eat_punct(";"); // Go: `if init; cond {`
         }
+        let saved_ac = self.allow_composite;
+        self.allow_composite = false;
         let cond = self.parse_expr()?;
+        self.allow_composite = saved_ac;
         let then = self.parse_block()?;
         let els = if self.eat_kw("else") {
             if self.at_kw("if") {
@@ -1544,8 +1569,11 @@ impl GoParser {
                 if self.at_punct("[") && self.looks_like_type_args() {
                     self.skip_brackets()?;
                 }
-                // struct composite literal: Type{...} when Type is known
-                if self.at_punct("{") && self.type_names.contains(&t.text) {
+                // struct composite literal: Type{...} when Type is known or in
+                // expression context (RHS, args, return) where blocks cannot appear
+                if self.at_punct("{")
+                    && (self.type_names.contains(&t.text) || self.allow_composite)
+                {
                     return self.parse_composite(Ty::Class(t.text.clone()), false);
                 }
                 Ok(Expr::Ident(t.text))

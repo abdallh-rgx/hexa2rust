@@ -225,14 +225,38 @@ impl JsParser {
             if self.ts && (self.at_kw("namespace") || self.at_kw("module")) {
                 return Err(self.unsupported("namespace/module"));
             }
-            if self.ts && self.at_kw("type")
-                && (self.nxt(1).kind == Tok::Ident || self.nxt(1).kind == Tok::Keyword)
-                && self.nxt(2).is_punct("=")
-            {
+            let is_type_alias = (self.ts && self.at_kw("type")
+                || (!self.ts
+                    && self.cur().kind == Tok::Ident
+                    && self.cur().text == "type"
+                    && self.nxt(1).kind == Tok::Ident))
+                && (self.nxt(2).is_punct("=") || self.nxt(2).is_punct("<"));
+            if is_type_alias {
+                let start_line = self.cur().line;
                 self.bump();
                 let name = self.expect_ident()?;
-                self.bump(); // =
-                self.skip_to_semi()?;
+                // skip generic parameters
+                if self.at_punct("<") {
+                    self.skip_type_args()?;
+                }
+                if self.eat_punct("=") {
+                    // skip the type body until ';' or a token back at column 1
+                    let mut depth = 0i32;
+                    while self.cur().kind != Tok::Eof {
+                        let t = self.cur().clone();
+                        if t.is_punct("{") || t.is_punct("(") || t.is_punct("[") {
+                            depth += 1;
+                        } else if t.is_punct("}") || t.is_punct(")") || t.is_punct("]") {
+                            depth -= 1;
+                        } else if t.is_punct(";") && depth <= 0 {
+                            self.bump();
+                            break;
+                        } else if depth <= 0 && t.col == 1 && t.line > start_line {
+                            break;
+                        }
+                        self.bump();
+                    }
+                }
                 decls.push(Decl::TypeAlias { name, ty: Ty::Any });
                 continue;
             }
@@ -799,8 +823,12 @@ impl JsParser {
             let mut var = None;
             if self.eat_punct("(") {
                 var = Some(self.expect_ident()?);
-                if self.ts && self.eat_punct(":") {
-                    let _ = self.parse_ts_type()?;
+                if self.eat_punct(":") {
+                    let _ = if self.ts {
+                        self.parse_ts_type()?
+                    } else {
+                        self.parse_flow_type()?
+                    };
                 }
                 self.expect_punct(")")?;
             }
@@ -827,8 +855,12 @@ impl JsParser {
             return Err(self.unsupported("generator functions"));
         }
         let (params, mut prologue) = self.parse_params()?;
-        let ret = if self.ts && self.eat_punct(":") {
-            self.parse_ts_type()?
+        let ret = if self.eat_punct(":") {
+            if self.ts {
+                self.parse_ts_type()?
+            } else {
+                self.parse_flow_type()?
+            }
         } else {
             Ty::Any
         };
@@ -869,8 +901,12 @@ impl JsParser {
             }
             let target = self.parse_binding_target()?;
             self.eat_punct("?");
-            let ty = if self.ts && self.eat_punct(":") {
-                self.parse_ts_type()?
+            let ty = if self.eat_punct(":") {
+                if self.ts {
+                    self.parse_ts_type()?
+                } else {
+                    self.parse_flow_type()?
+                }
             } else {
                 Ty::Any
             };
@@ -1816,6 +1852,48 @@ impl JsParser {
             parts.push(InterpPart::Lit(transpiler_core::lexer::unescape(&lit)));
         }
         Ok(Expr::Interp { parts })
+    }
+
+    /// Flow type annotation in plain JS: `?any`, `?() => ?Iterator<*>`, `T`
+    fn parse_flow_type(&mut self) -> PResult<Ty> {
+        while self.at_punct("?") {
+            self.bump();
+        }
+        // function type
+        if self.at_punct("(") {
+            let mut depth = 0;
+            loop {
+                let t = self.bump();
+                if t.kind == Tok::Eof {
+                    return Err(self.err("unterminated flow function type"));
+                }
+                if t.is_punct("(") {
+                    depth += 1;
+                }
+                if t.is_punct(")") {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+            }
+            if self.eat_punct("=>") {
+                let _ = self.parse_flow_type()?;
+            }
+            return Ok(Ty::Any);
+        }
+        if self.cur().kind == Tok::Ident {
+            let _ = self.bump().text;
+            if self.at_punct("<") {
+                self.skip_type_args()?;
+            }
+            return Ok(Ty::Any);
+        }
+        if self.cur().kind == Tok::Keyword {
+            self.bump();
+            return Ok(Ty::Any);
+        }
+        Ok(Ty::Any)
     }
 
     // ---- TypeScript types ------------------------------------------------

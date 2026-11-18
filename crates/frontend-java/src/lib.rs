@@ -600,8 +600,21 @@ impl JavaParser {
             if self.cur().kind == Tok::Eof {
                 return Err(self.err("unexpected end of parameters"));
             }
-            if self.eat_kw("final") {
+            while self.eat_kw("final") {}
+            // parameter annotations: @Nullable, @Nonnull...
+            while self.at_punct("@") {
                 self.bump();
+                if self.cur().kind == Tok::Ident {
+                    self.bump();
+                }
+                if self.at_punct(".") {
+                    while self.eat_punct(".") {
+                        let _ = self.expect_ident()?;
+                    }
+                }
+                if self.at_punct("(") {
+                    self.skip_balanced()?;
+                }
             }
             let ty = self.parse_type()?;
             let name = self.expect_ident()?;
@@ -859,7 +872,10 @@ impl JavaParser {
             "int" | "long" | "short" | "byte" | "float" | "double" | "boolean" | "char" | "var"
         );
         if type_kw {
-            // `int x` vs `int.class` etc: next must be Ident
+            // `int x` or `char[] x`
+            if self.nxt(1).is_punct("[") && self.nxt(2).is_punct("]") {
+                return self.nxt(3).kind == Tok::Ident;
+            }
             return self.nxt(1).kind == Tok::Ident;
         }
         if t.kind == Tok::Ident {
@@ -1345,6 +1361,7 @@ impl JavaParser {
                 continue;
             }
             if self.at_punct("(") {
+                self.bump(); // (
                 let args = self.parse_args_rest()?;
                 match e {
                     Expr::Field { obj, name, .. } => {

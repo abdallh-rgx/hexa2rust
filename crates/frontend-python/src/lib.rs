@@ -443,6 +443,24 @@ impl PyParser {
             Err(self.err(format!("expected identifier, found '{}'", self.cur().text)))
         }
     }
+    fn skip_bracketed(&mut self) -> PResult<()> {
+        self.expect_punct("[")?;
+        let mut depth = 1;
+        while depth > 0 {
+            let t = self.bump();
+            if t.kind == PTok::Eof {
+                return Err(self.err("unexpected end of generic base list"));
+            }
+            if t.kind == PTok::Punct && t.text == "[" {
+                depth += 1;
+            }
+            if t.kind == PTok::Punct && t.text == "]" {
+                depth -= 1;
+            }
+        }
+        Ok(())
+    }
+
     fn expect_newline(&mut self) -> PResult<()> {
         if self.cur().kind == PTok::Newline {
             self.bump();
@@ -785,7 +803,25 @@ impl PyParser {
         // annotated assignment:  x: int = 5
         if self.at_punct(":") {
             self.bump();
-            let _ = self.parse_expr(true)?; // annotation (erased)
+            // annotation (erased): skip a possibly-generic type like
+            // OrderedDict[str, tuple[str, _VT]] up to '=' or end of line
+            let mut depth = 0i32;
+            while self.cur().kind != PTok::Eof {
+                let t = self.cur().clone();
+                if t.kind == PTok::Punct {
+                    if t.text == "[" {
+                        depth += 1;
+                    } else if t.text == "]" {
+                        depth -= 1;
+                    } else if depth == 0 && t.text == "=" {
+                        break;
+                    }
+                }
+                if depth == 0 && t.kind == PTok::Newline {
+                    break;
+                }
+                self.bump();
+            }
             if self.eat_punct("=") {
                 let value = self.parse_expr(true)?;
                 self.expect_newline()?;
@@ -1075,6 +1111,10 @@ impl PyParser {
             while !self.at_punct(")") {
                 if self.cur().kind == PTok::Ident {
                     bases.push(self.bump().text);
+                    // skip generic subscripts: MutableMapping[str, _VT]
+                    if self.at_punct("[") {
+                        self.skip_bracketed()?;
+                    }
                 } else if self.cur().kind == PTok::Keyword {
                     // metaclass=... keywords
                     self.bump();
@@ -1461,7 +1501,14 @@ impl PyParser {
                 let v = self.parse_lambda()?;
                 args.push(Expr::Named { name, e: Box::new(v) });
             } else {
-                args.push(self.parse_lambda()?);
+                let first = self.parse_lambda()?;
+                // generator expression: f(x for y in z if c)
+                if self.at_kw("for") {
+                    let comp = self.parse_comprehension(first)?;
+                    args.push(comp);
+                } else {
+                    args.push(first);
+                }
             }
             if !self.eat_punct(",") {
                 break;

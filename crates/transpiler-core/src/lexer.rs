@@ -186,11 +186,11 @@ impl Lexer {
             Some(c) => c,
         };
 
-        // Identifiers / keywords
-        if c == '_' || c.is_alphabetic() || (c as u32) > 127 {
+        // Identifiers / keywords ($ allowed for JS `$$typeof` etc.)
+        if c == '_' || c == '$' || c.is_alphabetic() || (c as u32) > 127 {
             let mut s = String::new();
             while let Some(ch) = self.peek() {
-                if ch == '_' || ch.is_alphanumeric() || (ch as u32) > 127 {
+                if ch == '_' || ch == '$' || ch.is_alphanumeric() || (ch as u32) > 127 {
                     s.push(ch);
                     self.bump();
                 } else {
@@ -326,7 +326,15 @@ impl Lexer {
                 break;
             }
         }
-        let kind = if is_float || s.contains('.') || s.contains('e') || s.contains('E') {
+        let radix_prefixed = s.starts_with("0x")
+            || s.starts_with("0X")
+            || s.starts_with("0b")
+            || s.starts_with("0B")
+            || s.starts_with("0o")
+            || s.starts_with("0O");
+        let kind = if radix_prefixed {
+            Tok::Int
+        } else if is_float || s.contains('.') || s.contains('e') || s.contains('E') {
             Tok::Float
         } else {
             Tok::Int
@@ -480,9 +488,18 @@ pub fn unescape(s: &str) -> String {
 
 /// Parse an integer literal text (hex/binary/octal/decimal with `_`).
 pub fn parse_int_text(text: &str) -> Option<i64> {
-    let t = text.trim_end_matches(|c: char| c.is_ascii_alphabetic());
+    let radix_prefixed = text.starts_with("0x")
+        || text.starts_with("0X")
+        || text.starts_with("0b")
+        || text.starts_with("0B")
+        || text.starts_with("0o")
+        || text.starts_with("0O");
+    let t = if radix_prefixed {
+        text
+    } else {
+        text.trim_end_matches(|c: char| c.is_ascii_alphabetic())
+    };
     let t = t.replace('_', "");
-    let t = t.trim_end_matches(|c: char| c.is_ascii_digit() && false);
     if let Some(hex) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
         return i64::from_str_radix(hex, 16).ok();
     }

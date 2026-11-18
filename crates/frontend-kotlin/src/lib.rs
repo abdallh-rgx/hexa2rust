@@ -396,6 +396,7 @@ impl KotlinParser {
             }
         }
         self.expect_punct("{")?;
+        let is_enum = false;
         while !self.at_punct("}") {
             if self.cur().kind == Tok::Eof {
                 return Err(self.err("unexpected end of class body"));
@@ -404,6 +405,40 @@ impl KotlinParser {
                 continue;
             }
             self.skip_annotations()?;
+            // enum class entries: NAME or NAME(args)
+            if is_enum {}
+            if (self.cur().kind == Tok::Ident || self.cur().kind == Tok::Keyword)
+                && (self.nxt(1).is_punct(",")
+                    || self.nxt(1).is_punct(";")
+                    || self.nxt(1).is_punct("}")
+                    || self.nxt(1).is_punct("("))
+                && !self.at_kw("companion")
+                && !self.at_kw("fun")
+                && !self.at_kw("val")
+                && !self.at_kw("var")
+                && !self.at_kw("class")
+                && !self.at_kw("object")
+            {
+                let ename = self.bump().text;
+                let init = if self.at_punct("(") {
+                    let _ = self.skip_balanced("(", ")")?;
+                    Expr::Str(ename.clone())
+                } else {
+                    Expr::Str(ename.clone())
+                };
+                cls.fields.push(FieldDecl {
+                    name: ename,
+                    ty: Ty::Any,
+                    init: Some(init),
+                    is_static: false,
+                    mutable: false,
+                    visibility: Visibility::Public,
+                });
+                if !self.eat_punct(",") {
+                    self.eat_punct(";");
+                }
+                continue;
+            }
             if self.at_kw("companion") {
                 self.bump();
                 if self.at_kw("object") {
@@ -506,19 +541,47 @@ impl KotlinParser {
         if self.at_kw("val") || self.at_kw("var") {
             let mutable = self.at_kw("var");
             self.bump();
-            let stmts = self.parse_property_decl(mutable, true)?;
-            for s in stmts {
-                if let Stmt::Local { name, ty, init, .. } = s {
-                    cls.fields.push(FieldDecl {
-                        name,
-                        ty,
-                        init,
-                        is_static,
-                        mutable,
-                        visibility: Visibility::Default,
-                    });
+            let name = self.expect_ident()?;
+            let ty = if self.eat_punct(":") {
+                self.parse_type()?
+            } else {
+                Ty::Any
+            };
+            let init = if self.eat_punct("=") { Some(self.parse_expr()?) } else { None };
+            // accessors: get() = ... / set (get/set are identifiers in Kotlin)
+            let is_accessor = |p: &Self| {
+                (p.cur().kind == Tok::Ident || p.cur().kind == Tok::Keyword)
+                    && (p.cur().text == "get" || p.cur().text == "set")
+            };
+            if is_accessor(self) {
+                // property with accessors -> represent as methods
+                while is_accessor(self) {
+                    let which = self.bump().text;
+                    let _ = which;
+                    if self.at_punct("(") {
+                        let _ = self.skip_balanced("(", ")")?;
+                    }
+                    if self.eat_punct("=") {
+                        let body = vec![Stmt::Return(Some(self.parse_expr()?))];
+                        let mname = format!("get_{}", name);
+                        cls.methods.push(FunctionDecl::new(&mname, vec![], ty.clone(), body));
+                    } else if self.at_punct("{") {
+                        let body = self.parse_block()?;
+                        let mname = format!("get_{}", name);
+                        cls.methods.push(FunctionDecl::new(&mname, vec![], ty.clone(), body));
+                    }
+                    self.expect_semi()?;
                 }
+                return Ok(());
             }
+            cls.fields.push(FieldDecl {
+                name,
+                ty,
+                init,
+                is_static,
+                mutable,
+                visibility: Visibility::Default,
+            });
             return Ok(());
         }
         Err(self.unsupported("class member"))

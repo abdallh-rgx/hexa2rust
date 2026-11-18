@@ -2434,10 +2434,24 @@ impl<'a> Gen<'a> {
             "pop" => format!("{}.borrow_mut().pop().unwrap_or_default()", o),
             "isEmpty" | "empty" | "is_empty" => format!("{}.borrow().is_empty()", o),
             "contains" | "includes" => format!("{}.borrow().contains(&{})", o, a.first().cloned().unwrap_or_else(|| "Default::default()".into())),
-            "get" => format!("{}.borrow().get(&{}).cloned().unwrap_or_default()", o, a[0]),
-            "set" | "__setitem__" | "put" => format!("{{ {}.borrow_mut().insert({}, {}); }}", o, a[0], a[1]),
+            "get" => format!(
+                "{}.borrow().get(&{}).cloned().unwrap_or_default()",
+                o,
+                a.first().cloned().unwrap_or_else(|| "Default::default()".into())
+            ),
+            "set" | "__setitem__" | "put" => format!(
+                "{{ {}.borrow_mut().insert({}, {}); }}",
+                o,
+                a.first().cloned().unwrap_or_else(|| "Default::default()".into()),
+                a.get(1).cloned().unwrap_or_else(|| "Default::default()".into())
+            ),
             "join" => format!("{}.borrow().join(&{})", o, a.first().cloned().unwrap_or_else(|| "\"\".to_string()".into())),
-            "substring" | "slice" => format!("{}.borrow()[{} as usize..{} as usize].to_string()", o, a[0], a[1]),
+            "substring" | "slice" => format!(
+                "{}.borrow()[{} as usize..{} as usize].to_string()",
+                o,
+                a.first().cloned().unwrap_or_else(|| "0".into()),
+                a.get(1).cloned().unwrap_or_else(|| "0".into())
+            ),
             "to_string" | "toString" => format!("format!(\"{{:?}}\", {})", o),
             "keys" => format!("rt({}.borrow().keys().cloned().collect::<Vec<_>>())", o),
             "values" => format!("rt({}.borrow().values().cloned().collect::<Vec<_>>())", o),

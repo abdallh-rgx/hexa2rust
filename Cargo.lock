@@ -16,10 +16,16 @@ dependencies = [
 [[package]]
 name = "frontend-go"
 version = "0.1.0"
+dependencies = [
+ "transpiler-core",
+]
 
 [[package]]
 name = "frontend-java"
 version = "0.1.0"
+dependencies = [
+ "transpiler-core",
+]
 
 [[package]]
 name = "frontend-javascript"
@@ -31,6 +37,9 @@ dependencies = [
 [[package]]
 name = "frontend-kotlin"
 version = "0.1.0"
+dependencies = [
+ "transpiler-core",
+]
 
 [[package]]
 name = "frontend-python"

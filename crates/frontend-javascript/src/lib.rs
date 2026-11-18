@@ -659,6 +659,7 @@ impl JsParser {
                 let body = self.parse_stmt(false)?.unwrap_or(Stmt::Pass);
                 return Ok(Some(Stmt::ForEach {
                     var,
+                    var2: None,
                     var_ty: Ty::Any,
                     iter,
                     body: blockify(body),
@@ -673,6 +674,7 @@ impl JsParser {
                 let body = self.parse_stmt(false)?.unwrap_or(Stmt::Pass);
                 return Ok(Some(Stmt::ForEach {
                     var,
+                    var2: None,
                     var_ty: Ty::Any,
                     iter: Expr::method(iter, "__keys__", vec![]),
                     body: blockify(body),
@@ -698,6 +700,7 @@ impl JsParser {
                 };
                 return Ok(Some(Stmt::ForEach {
                     var,
+                    var2: None,
                     var_ty: Ty::Any,
                     iter,
                     body: blockify(body),

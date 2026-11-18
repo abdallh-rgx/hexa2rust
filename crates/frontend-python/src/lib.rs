@@ -833,6 +833,10 @@ impl PyParser {
             }
             let value = value.ok_or_else(|| self.err("missing assignment value"))?;
             self.expect_newline()?;
+            if targets.len() == 1 {
+                let tgt = targets.pop().unwrap();
+                return Ok(Some(self.make_assign(tgt, None, value)?));
+            }
             let mut stmts = Vec::new();
             let tmp = "$chain";
             stmts.push(Stmt::Local {
@@ -844,11 +848,7 @@ impl PyParser {
             for tgt in targets {
                 stmts.push(self.make_assign(tgt, None, Expr::ident("$chain"))?);
             }
-            return Ok(Some(if stmts.len() == 1 {
-                stmts.pop().unwrap()
-            } else {
-                Stmt::Block(stmts)
-            }));
+            return Ok(Some(Stmt::Block(stmts)));
         }
         self.expect_newline()?;
         Ok(Some(Stmt::Expr(first)))
@@ -934,6 +934,7 @@ impl PyParser {
         match target {
             Expr::Ident(var) => Ok(vec![Stmt::ForEach {
                 var,
+                var2: None,
                 var_ty: Ty::Any,
                 iter,
                 body,
@@ -942,6 +943,7 @@ impl PyParser {
                 let var = "$it".to_string();
                 Ok(vec![Stmt::ForEach {
                     var: var.clone(),
+                    var2: None,
                     var_ty: Ty::Any,
                     iter,
                     body: {
@@ -1675,12 +1677,14 @@ impl PyParser {
             let stmts = match target {
                 Expr::Ident(name) => vec![Stmt::ForEach {
                     var: name,
+                    var2: None,
                     var_ty: Ty::Any,
                     iter,
                     body: inner,
                 }],
                 pat => vec![Stmt::ForEach {
                     var: var.clone(),
+                    var2: None,
                     var_ty: Ty::Any,
                     iter,
                     body: {

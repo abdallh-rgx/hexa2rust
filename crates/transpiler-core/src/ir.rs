@@ -215,6 +215,8 @@ pub enum Stmt {
     },
     ForEach {
         var: String,
+        /// second loop variable (`for k, v := range m` in Go)
+        var2: Option<String>,
         var_ty: Ty,
         iter: Expr,
         body: Block,

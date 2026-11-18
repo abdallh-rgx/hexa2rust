@@ -345,6 +345,12 @@ pub enum Expr {
         name: String,
         e: Box<Expr>,
     },
+    /// Assignment used as an expression (JS `for (i = 0; ...)`).
+    AssignExpr {
+        target: Box<Expr>,
+        op: Option<BinOp>,
+        value: Box<Expr>,
+    },
     Paren(Box<Expr>),
     Spread(Box<Expr>),
     Seq(Vec<Expr>),
@@ -477,6 +483,7 @@ pub fn expr_size(e: &Expr) -> usize {
         Expr::Cast { e, .. } => expr_size(e),
         Expr::Range { lo, hi, .. } => expr_size(lo) + expr_size(hi),
         Expr::Named { e, .. } | Expr::Paren(e) | Expr::Spread(e) | Expr::Await(e) => expr_size(e),
+        Expr::AssignExpr { target, value, .. } => expr_size(target) + expr_size(value),
         Expr::Closure { params, body, value } => {
             params.len()
                 + stmts_size(body)

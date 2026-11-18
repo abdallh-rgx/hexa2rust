@@ -24,6 +24,9 @@ version = "0.1.0"
 [[package]]
 name = "frontend-javascript"
 version = "0.1.0"
+dependencies = [
+ "transpiler-core",
+]
 
 [[package]]
 name = "frontend-kotlin"
@@ -36,6 +39,10 @@ version = "0.1.0"
 [[package]]
 name = "frontend-typescript"
 version = "0.1.0"
+dependencies = [
+ "frontend-javascript",
+ "transpiler-core",
+]
 
 [[package]]
 name = "transpiler-core"

@@ -725,6 +725,7 @@ pub mod prelude {
         __len__, __max__, __min__, __obj_assign__, __obj_spread__, __print__, __range__,
         __range3__, __round__, __sorted__, __sqrt__, __sum__, __to_float__, __to_int__,
         __to_list__, __to_str__, __try__, __typeof__, __values__, __map_new__, __merge__,
+        __entries_v__, __dict_new__, __contains__, __map_has__,
     };
     pub use std::cell::RefCell;
     pub use std::rc::Rc;
@@ -1122,5 +1123,57 @@ pub fn run_spawns() {
             Some(f) => f(),
             None => break,
         }
+    }
+}
+
+/// map/object entries as [k, v] pair Values (typed-mode Go range over maps)
+pub fn __entries_v__(v: Value) -> Rt<Vec<Value>> {
+    match v {
+        Value::Object(o) => {
+            let fields: Vec<(String, Value)> = o
+                .borrow()
+                .fields
+                .iter()
+                .map(|(k, val)| (k.clone(), val.clone()))
+                .collect();
+            rt(fields
+                .into_iter()
+                .map(|(k, val)| Value::array(vec![Value::Str(k), val]))
+                .collect())
+        }
+        Value::Array(a) => {
+            let items = a.borrow().clone();
+            rt(items
+                .into_iter()
+                .enumerate()
+                .map(|(i, x)| Value::array(vec![Value::Int(i as i64), x]))
+                .collect())
+        }
+        _ => rt(vec![]),
+    }
+}
+
+/// membership test: `x in collection`
+pub fn __contains__(coll: &Value, item: &Value) -> bool {
+    match coll {
+        Value::Array(a) => a.borrow().iter().any(|x| Value::eq(x, item)),
+        Value::Object(o) => o.borrow().has(&item.display()),
+        Value::Str(s) => s.contains(&item.display()),
+        _ => false,
+    }
+}
+
+/// membership check for the Go two-value map lookup idiom: (v, ok := m[k])
+pub fn __map_has__(m: &Value, k: &Value) -> bool {
+    match m {
+        Value::Object(o) => o.borrow().has(&k.display()),
+        Value::Array(a) => {
+            let idx = match k {
+                Value::Int(i) => *i as usize,
+                _ => return false,
+            };
+            idx < a.borrow().len()
+        }
+        _ => false,
     }
 }

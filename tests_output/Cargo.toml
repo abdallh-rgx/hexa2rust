@@ -1,0 +1,13 @@
+[package]
+name = "tests_output"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+transpiler-rt = { path = "../crates/transpiler-rt" }
+
+[[bin]]
+name = "tests_output"
+path = "src/main.rs"
+
+[workspace]

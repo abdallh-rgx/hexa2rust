@@ -72,6 +72,7 @@ struct Scope {
     cell_locals: Set<String>,
     class_of: Option<String>,
     parent_of: Option<String>,
+    ret_ty: Option<Ty>,
 }
 
 struct Gen<'a> {
@@ -157,14 +158,7 @@ impl<'a> Gen<'a> {
                 }
             }
         }
-        // methods (typed)
-        if !self.dynamic {
-            for c in &classes {
-                for m in &c.methods {
-                    fns.push(m);
-                }
-            }
-        }
+
         for f in &fns {
             if self.dynamic {
                 self.gen_dynamic_function(f, None);
@@ -219,30 +213,30 @@ impl<'a> Gen<'a> {
         let id = rust_ident(&g.name);
         if self.dynamic {
             self.w(&format!(
-                "thread_local! {{ static {}: RefCell<Value> = RefCell::new(Value::Undefined); }}",
+                "thread_local! {{ static {}_CELL: RefCell<Value> = RefCell::new(Value::Undefined); }}",
                 id
             ));
             self.w(&format!(
-                "pub fn {}() -> Value {{ {}.with(|c| c.borrow().clone()) }}",
+                "pub fn {}() -> Value {{ {}_CELL.with(|c| c.borrow().clone()) }}",
                 id, id
             ));
             self.w(&format!(
-                "pub fn set_{}(v: Value) {{ {}.with(|c| *c.borrow_mut() = v); }}",
+                "pub fn set_{}(v: Value) {{ {}_CELL.with(|c| *c.borrow_mut() = v); }}",
                 id, id
             ));
         } else {
             let ty = self.ty(&g.ty);
             let default = default_value(&g.ty);
             self.w(&format!(
-                "thread_local! {{ static {0}: RefCell<{1}> = RefCell::new({2}); }}",
+                "thread_local! {{ static {0}_CELL: RefCell<{1}> = RefCell::new({2}); }}",
                 id, ty, default
             ));
             self.w(&format!(
-                "pub fn {0}() -> {1} {{ {0}.with(|c| c.borrow().clone()) }}",
+                "pub fn {0}() -> {1} {{ {0}_CELL.with(|c| c.borrow().clone()) }}",
                 id, ty
             ));
             self.w(&format!(
-                "pub fn {0}__set(v: {1}) {{ {0}.with(|c| *c.borrow_mut() = v); }}",
+                "pub fn {0}__set(v: {1}) {{ {0}_CELL.with(|c| *c.borrow_mut() = v); }}",
                 id, ty
             ));
         }
@@ -265,12 +259,12 @@ impl<'a> Gen<'a> {
             self.gen_dynamic_function(&f, Some(cname.to_string()));
         }
         // class object: fn __class_C() -> Value with statics + `new`
-        let mut parts = vec![format!("\"__name__\", Value::Str(\"{}\".into())", cname)];
+        let mut parts = vec![format!("(\"__name__\", Value::Str(\"{}\".into()))", cname)];
         for f in &c.methods {
             if f.is_static {
                 // static methods as plain fields on the class object
                 parts.push(format!(
-                    "\"{}\", Value::Func(Rc::new({}_{}))",
+                    "(\"{}\", Value::Func(Rc::new({}_{})))",
                     f.name, cname, f.name
                 ));
             }
@@ -281,15 +275,15 @@ impl<'a> Gen<'a> {
                     Some(e) => self.expr(e),
                     None => "Value::Undefined".to_string(),
                 };
-                parts.push(format!("\"{}\", {}", fld.name, init));
+                parts.push(format!("(\"{}\", {})", fld.name, init));
             }
         }
         parts.push(format!(
-            "\"new\", Value::Func(Rc::new({}_new))",
+            "(\"new\", Value::Func(Rc::new({}_new)))",
             cname
         ));
         self.w(&format!(
-            "pub fn __class_{}() -> Value {{ Value::object(obj!([{}])) }}",
+            "pub fn __class_{}() -> Value {{ obj_new(vec![{}]) }}",
             cname,
             parts.join(", ")
         ));
@@ -310,24 +304,22 @@ impl<'a> Gen<'a> {
         }
         // method install helper: fn C__install_methods(obj: &Value)
         let methods: Vec<&FunctionDecl> = c.methods.iter().filter(|m| !m.is_static).collect();
-        if !methods.is_empty() || c.extends.is_some() {
+        self.w(&format!(
+            "pub fn {}__install_methods(o: &Value) {{",
+            cname
+        ));
+        self.indent += 1;
+        for m in &methods {
             self.w(&format!(
-                "pub fn {}__install_methods(o: &Value) {{",
-                cname
+                "Value::set_field(o, \"{}\", Value::Func(Rc::new({}_{})));",
+                m.name, cname, m.name
             ));
-            self.indent += 1;
-            for m in &methods {
-                self.w(&format!(
-                    "Value::set_field(o, \"{}\", Value::Func(Rc::new({}_{})));",
-                    m.name, cname, m.name
-                ));
-            }
-            if let Some(parent) = &c.extends {
-                self.w(&format!("{}__install_methods(o);", rust_ident(parent)));
-            }
-            self.indent -= 1;
-            self.w("}");
         }
+        if let Some(parent) = &c.extends {
+            self.w(&format!("{}__install_methods(o);", rust_ident(parent)));
+        }
+        self.indent -= 1;
+        self.w("}");
         // emit method functions
         for m in &c.methods {
             let mut f = m.clone();
@@ -392,13 +384,12 @@ impl<'a> Gen<'a> {
             let ret = self.ty(&m.ret);
             let ret_s: String = if matches!(m.ret, Ty::Void) { "".into() } else { format!(" -> {}", ret) };
             let mname = format!("m_{}", rust_ident(&m.name));
-            self.w(&format!(
-                "pub fn {}(this: &{}, {}){} {{",
-                mname,
-                c_ptr,
-                params.join(", "),
-                ret_s
-            ));
+            let params_full = if params.is_empty() {
+                format!("this: &{}", c_ptr)
+            } else {
+                format!("this: &{}, {}", c_ptr, params.join(", "))
+            };
+            self.w(&format!("pub fn {}({}){} {{", mname, params_full, ret_s));
             self.indent += 1;
             let mut scope = Scope::default();
             for p in &m.params {
@@ -406,6 +397,7 @@ impl<'a> Gen<'a> {
                 scope.params.insert(p.name.clone());
             }
             scope.is_method = true;
+            scope.class_of = Some(c.name.clone());
             let saved = std::mem::replace(&mut self.scope, scope);
             let body = m.body.clone();
             self.gen_block_ret(&body, &m.ret);
@@ -564,9 +556,16 @@ impl<'a> Gen<'a> {
             scope.locals.insert(p.name.clone(), p.ty.clone());
             scope.params.insert(p.name.clone());
         }
+        scope.ret_ty = Some(f.ret.clone());
         let saved = std::mem::replace(&mut self.scope, scope);
+        self.defer_stack.push(vec![]);
         let body = f.body.clone();
         self.gen_block_ret(&body, &f.ret);
+        if let Some(defers) = self.defer_stack.pop() {
+            for d in defers.iter().rev() {
+                self.w(d);
+            }
+        }
         self.scope = saved;
         self.indent -= 1;
         self.w("}");
@@ -585,7 +584,14 @@ impl<'a> Gen<'a> {
             let last = i == b.len() - 1;
             if last && returns_value {
                 if let Stmt::Return(Some(e)) = s {
-                    let v = self.expr(e);
+                    let v = if self.dynamic {
+                        self.expr(e)
+                    } else if self.is_val_expr(e) {
+                        let vv = self.to_value(e);
+                        self.from_value(&vv, ret_ty)
+                    } else {
+                        self.expr_typed(e, ret_ty)
+                    };
                     self.w(&format!("return {};", v));
                     continue;
                 }
@@ -606,14 +612,42 @@ impl<'a> Gen<'a> {
                         .unwrap_or_else(|| "Value::Undefined".into());
                     self.w(&format!("let {}{}: Rt<Value> = rt({});", if *mutable { "mut " } else { "" }, id, val));
                 } else {
+                    self.scope.locals.insert(name.clone(), ty.clone());
                     match ty {
                         Ty::Any => {
-                            // untyped local: use Value for safety
-                            let val = init
-                                .as_ref()
-                                .map(|e| self.expr(e))
-                                .unwrap_or_else(|| "Value::Undefined".into());
-                            self.w(&format!("let {}{}: Rt<Value> = rt({});", if *mutable { "mut " } else { "" }, id, val));
+                            // untyped local: infer class constructor calls
+                            let inferred = match init {
+                                Some(Expr::Call { callee, .. }) => match &**callee {
+                                    Expr::Ident(n) if self.classes.contains_key(n) => {
+                                        Some(Ty::class(n))
+                                    }
+                                    _ => None,
+                                },
+                                _ => None,
+                            };
+                            match inferred {
+                                Some(cty) => {
+                                    let val = init
+                                        .as_ref()
+                                        .map(|e| self.expr_typed(e, &cty))
+                                        .unwrap_or_else(|| default_value(&cty));
+                                    self.w(&format!(
+                                        "let {}{}: {} = {};",
+                                        if *mutable { "mut " } else { "" },
+                                        id,
+                                        self.ty(&cty),
+                                        val
+                                    ));
+                                    self.scope.locals.insert(name.clone(), cty);
+                                }
+                                None => {
+                                    let val = init
+                                        .as_ref()
+                                        .map(|e| self.to_value(e))
+                                        .unwrap_or_else(|| "Value::Undefined".into());
+                                    self.w(&format!("let {}{}: Rt<Value> = rt({});", if *mutable { "mut " } else { "" }, id, val));
+                                }
+                            }
                         }
                         _ => {
                             let val = init
@@ -625,7 +659,6 @@ impl<'a> Gen<'a> {
                         }
                     }
                 }
-                self.scope.locals.insert(name.clone(), ty.clone());
             }
             Stmt::Assign { target, op, value } => {
                 self.assign(target, *op, value);
@@ -710,8 +743,14 @@ impl<'a> Gen<'a> {
                         if self.dynamic {
                             let val = self.expr(e);
                             self.w(&format!("return {};", val));
+                        } else if self.is_val_expr(e) {
+                            let ret_hint = self.scope.ret_ty.clone().unwrap_or(Ty::Any);
+                            let v = self.to_value(e);
+                            let val = self.from_value(&v, &ret_hint);
+                            self.w(&format!("return {};", val));
                         } else {
-                            let val = self.expr_typed(e, &Ty::Any);
+                            let ret_hint = self.scope.ret_ty.clone().unwrap_or(Ty::Any);
+                            let val = self.expr_typed(e, &ret_hint);
                             self.w(&format!("return {};", val));
                         }
                     }
@@ -806,46 +845,180 @@ impl<'a> Gen<'a> {
             let items = self.widen_iter(&it);
             if let Some(id2) = &id2 {
                 // Go k, v := range m — items are [k, v] pairs
-                self.w(&format!("for $entry in {} {{", items));
+                self.w(&format!("for __entry in {}.borrow().iter() {{", items));
                 self.indent += 1;
                 self.w(&format!(
-                    "let {}: Rt<Value> = rt($entry.borrow().index_get(&Value::Int(0)));",
+                    "let {}: Rt<Value> = rt(Value::index_get(__entry, &Value::Int(0)));",
                     id
                 ));
                 self.w(&format!(
-                    "let {}: Rt<Value> = rt($entry.borrow().index_get(&Value::Int(1)));",
+                    "let {}: Rt<Value> = rt(Value::index_get(__entry, &Value::Int(1)));",
                     id2
                 ));
                 self.gen_block(body);
                 self.indent -= 1;
                 self.w("}");
             } else {
-                self.w(&format!("for $item in {} {{", items));
+                self.w(&format!("for __item in {}.borrow().iter() {{", items));
                 self.indent += 1;
-                self.w(&format!("let {}: Rt<Value> = rt($item.borrow().clone());", id));
+                self.w(&format!("let {}: Rt<Value> = rt(__item.clone());", id));
+                self.scope.locals.insert(var.to_string(), Ty::Any);
+                self.scope.cell_locals.insert(var.to_string());
                 self.gen_block(body);
                 self.indent -= 1;
                 self.w("}");
             }
         } else {
             let it = self.expr_typed(iter, &Ty::Any);
-            // arrays: Rt<Vec<T>>; maps: Rt<HashMap<K,V>>
-            if id2.is_some() {
-                self.w(&format!("for ($id, $val) in __entries__(&{}) {{", it));
+            let val_iter = self.is_val_expr(iter);
+            if val_iter {
+                // Value-backed iterable (Ty::Any local): iterate like dynamic mode
+                if id2.is_some() {
+                    self.w(&format!(
+                        "for __entry in __entries_v__({}).borrow().iter() {{",
+                        it
+                    ));
+                    self.indent += 1;
+                    self.scope.locals.insert(var.to_string(), Ty::Any);
+                    self.scope.cell_locals.insert(var.to_string());
+                    if let Some(v2) = var2 {
+                        self.scope.locals.insert(v2.to_string(), Ty::Any);
+                        self.scope.cell_locals.insert(v2.to_string());
+                    }
+                    self.w(&format!(
+                        "let {}: Rt<Value> = rt(Value::index_get(__entry, &Value::Int(0)));",
+                        id
+                    ));
+                    self.w(&format!(
+                        "let {}: Rt<Value> = rt(Value::index_get(__entry, &Value::Int(1)));",
+                        id2.unwrap()
+                    ));
+                    self.gen_block(body);
+                    self.indent -= 1;
+                    self.w("}");
+                } else {
+                    self.w(&format!("for __item in __iter__({}).borrow().iter() {{", it));
+                    self.indent += 1;
+                    self.w(&format!("let {}: Rt<Value> = rt(__item.clone());", id));
+                    self.scope.locals.insert(var.to_string(), Ty::Any);
+                    self.scope.cell_locals.insert(var.to_string());
+                    self.gen_block(body);
+                    self.indent -= 1;
+                    self.w("}");
+                }
+            } else if id2.is_some() {
+                // typed map entries
+                self.w(&format!("for (__k, __v) in __entries__(&{}) {{", it));
                 self.indent += 1;
-                self.w(&format!("let {} = $id.clone();", id));
-                self.w(&format!("let {} = $val.clone();", id2.unwrap()));
+                self.w(&format!("let {} = __k.clone();", id));
+                self.w(&format!("let {} = __v.clone();", id2.unwrap()));
                 self.gen_block(body);
                 self.indent -= 1;
                 self.w("}");
             } else {
-                self.w(&format!("for $item in {}.borrow().iter() {{", it));
+                self.w(&format!("for __item in {}.borrow().iter() {{", it));
                 self.indent += 1;
-                self.w(&format!("let {} = $item.clone();", id));
+                self.w(&format!("let {} = __item.clone();", id));
+                self.scope.locals.insert(var.to_string(), Ty::Any);
                 self.gen_block(body);
                 self.indent -= 1;
                 self.w("}");
             }
+        }
+    }
+
+    /// value-kind classification used by the typed backend
+    fn kind_of(&self, t: &Ty) -> VKind {
+        match t {
+            Ty::Any | Ty::Named(_) | Ty::Func { .. } => VKind::Val,
+            Ty::Array(_) | Ty::Map(_, _) | Ty::Option(_) | Ty::Class(_) => VKind::Ref,
+            _ => VKind::Prim,
+        }
+    }
+
+    /// does this expression evaluate to a dynamic `Value`?
+    fn is_val_expr(&self, e: &Expr) -> bool {
+        self.tv(e) == VKind::Val
+    }
+
+    fn tv(&self, e: &Expr) -> VKind {
+        match e {
+            Expr::Ident(n) => {
+                if let Some(t) = self.scope.locals.get(n) {
+                    self.kind_of(t)
+                } else {
+                    VKind::Unknown
+                }
+            }
+            Expr::Paren(x) => self.tv(x),
+            Expr::Unary { e, .. } | Expr::Post { e, .. } => self.tv(e),
+            Expr::Binary { l, r, .. } => {
+                let lk = self.tv(l);
+                let rk = self.tv(r);
+                if lk == VKind::Val || rk == VKind::Val {
+                    VKind::Val
+                } else if lk == VKind::Float || rk == VKind::Float {
+                    VKind::Float
+                } else {
+                    VKind::Int
+                }
+            }
+            Expr::Int(_) => VKind::Int,
+            Expr::Float(_) => VKind::Float,
+            Expr::Bool(_) => VKind::Bool,
+            Expr::Str(_) | Expr::Char(_) | Expr::Interp { .. } => VKind::Str,
+            Expr::Null | Expr::Undefined | Expr::Unit => VKind::Val,
+            Expr::Range { .. } | Expr::Array(_) | Expr::Dict(_) | Expr::Object(_) => VKind::Val,
+            Expr::Method { obj, .. } | Expr::Field { obj, .. } => self.tv(obj),
+            Expr::Index { obj, .. } => self.tv(obj),
+            Expr::Slice { obj, .. } => self.tv(obj),
+            Expr::Call { callee, .. } => match &**callee {
+                Expr::Ident(n) if n == "__map_has__" => VKind::Bool,
+                Expr::Ident(n) if n == "__indices__" || n == "__keys__" => VKind::Val,
+                _ => VKind::Unknown,
+            },
+            Expr::Ternary { then, els, .. } => {
+                let a = self.tv(then);
+                let b = self.tv(els);
+                if a == VKind::Val || b == VKind::Val {
+                    VKind::Val
+                } else {
+                    a
+                }
+            }
+            _ => VKind::Unknown,
+        }
+    }
+
+    /// produce a `Value` from a typed expression
+    fn to_value(&mut self, e: &Expr) -> String {
+        match self.tv(e) {
+            VKind::Val => self.expr_typed(e, &Ty::Any),
+            VKind::Int => format!("Value::Int({} as i64)", self.expr_typed(e, &Ty::Long)),
+            VKind::Float => format!("Value::Float({} as f64)", self.expr_typed(e, &Ty::Double)),
+            VKind::Bool => format!("Value::Bool({})", self.expr_typed(e, &Ty::Bool)),
+            VKind::Str => {
+                let s = self.expr_typed(e, &Ty::Str);
+                format!("Value::Str({})", s)
+            }
+            VKind::Unknown | VKind::Ref | VKind::Prim => {
+                let s = self.expr_typed(e, &Ty::Any);
+                format!("Value::Str(format!(\"{{:?}}\", {}))", s)
+            }
+        }
+    }
+
+    /// convert a `Value` expression to the hinted type
+    fn from_value(&self, v: &str, hint: &Ty) -> String {
+        match hint {
+            Ty::Int | Ty::Long | Ty::Named(_) => format!(
+                "__to_int__(&{}).display().parse::<i64>().unwrap_or(0)",
+                v
+            ),
+            Ty::Float | Ty::Double => format!("__to_float__(&{})", v),
+            Ty::Bool => format!("{}.truthy()", v),
+            Ty::Str => format!("__to_str__(&{}).display()", v),
+            _ => v.to_string(),
         }
     }
 
@@ -857,7 +1030,7 @@ impl<'a> Gen<'a> {
     fn gen_match(&mut self, subject: &Expr, arms: &[MatchArm], default: Option<&Block>) {
         if self.dynamic {
             let s = self.expr(subject);
-            self.w(&format!("let $subj = {};", s));
+            self.w(&format!("let __subj = {};", s));
             let mut first = true;
             for arm in arms {
                 let conds: Vec<String> = arm
@@ -865,7 +1038,7 @@ impl<'a> Gen<'a> {
                     .iter()
                     .map(|p| {
                         let pv = self.expr(p);
-                        format!("Value::eq(&$subj, &{})", pv)
+                        format!("Value::eq(&__subj, &{})", pv)
                     })
                     .collect();
                 let mut cond = conds.join(" || ");
@@ -900,7 +1073,7 @@ impl<'a> Gen<'a> {
             }
         } else {
             let s = self.expr_typed(subject, &Ty::Any);
-            self.w(&format!("let $subj = {};", s));
+            self.w(&format!("let __subj = {};", s));
             let mut first = true;
             for arm in arms {
                 let conds: Vec<String> = arm
@@ -908,7 +1081,7 @@ impl<'a> Gen<'a> {
                     .iter()
                     .map(|p| {
                         let pv = self.expr_typed(p, &Ty::Any);
-                        format!("$subj == {}", pv)
+                        format!("__subj == {}", pv)
                     })
                     .collect();
                 let cond = conds.join(" || ");
@@ -952,7 +1125,7 @@ impl<'a> Gen<'a> {
             self.w("});");
         } else {
             let first = &catches[0];
-            let var = first.var.clone().unwrap_or_else(|| "$err".into());
+            let var = first.var.clone().unwrap_or_else(|| "__err".into());
             self.w(&format!("}}, |{}: String| {{", rust_ident(&var)));
             self.indent += 1;
             let mut scope = self.scope.clone();
@@ -978,21 +1151,67 @@ impl<'a> Gen<'a> {
         match target {
             Expr::Ident(name) => {
                 let id = rust_ident(name);
-                let rhs = if self.dynamic {
-                    self.expr(value)
+                if self.dynamic {
+                    let is_global = self.globals.contains(name);
+                    let cur = if is_global {
+                        format!("{}()", id)
+                    } else {
+                        format!("{}.borrow().clone()", id)
+                    };
+                    let rhs = self.expr(value);
+                    let rhs = match op {
+                        Some(o) => self.binop_value(o, &cur, &rhs),
+                        None => rhs,
+                    };
+                    if is_global {
+                        self.w(&format!("set_{}({});", id, rhs));
+                    } else {
+                        if !self.scope.locals.contains_key(name) {
+                            self.w(&format!(
+                                "let mut {}: Rt<Value> = rt(Value::Undefined);",
+                                id
+                            ));
+                            self.scope.locals.insert(name.clone(), Ty::Any);
+                            self.scope.cell_locals.insert(name.clone());
+                        }
+                        self.w(&format!("*{}.borrow_mut() = {};", id, rhs));
+                    }
                 } else {
-                    self.expr_typed(value, &Ty::Any)
-                };
-                let rhs = match op {
-                    Some(o) => self.binop_value(o, &self.load(&id), &rhs),
-                    None => rhs,
-                };
-                if self.dynamic || self.is_dynamic_local(name) {
-                    self.w(&format!("*{}.borrow_mut() = {};", id, rhs));
-                } else if self.globals.contains(name) {
-                    self.w(&format!("{}__set({});", id, rhs));
-                } else {
-                    self.w(&format!("{} = {};", id, rhs));
+                    let val_kind = self
+                        .scope
+                        .locals
+                        .get(name)
+                        .map(|t| self.kind_of(t))
+                        .unwrap_or(VKind::Unknown);
+                    match val_kind {
+                        VKind::Val => {
+                            let rhs = self.to_value(value);
+                            let rhs = match op {
+                                Some(o) => self.binop_value(
+                                    o,
+                                    &format!("{}.borrow().clone()", id),
+                                    &rhs,
+                                ),
+                                None => rhs,
+                            };
+                            self.w(&format!("*{}.borrow_mut() = {};", id, rhs));
+                        }
+                        _ => {
+                            let rhs = self.expr_typed(value, &Ty::Any);
+                            let rhs = match op {
+                                Some(o) => {
+                                    let cur = format!("{}.clone()", id);
+                                    self.binop_typed(o, &cur, &rhs)
+                                }
+                                None => rhs,
+                            };
+                            if self.globals.contains(name) {
+                                self.w(&format!("{}__set({});", id, rhs));
+                            } else {
+                                self.w(&format!("{} = {};", id, rhs));
+                            }
+                        }
+                    }
                 }
             }
             Expr::Field { obj, name, .. } => {
@@ -1001,14 +1220,14 @@ impl<'a> Gen<'a> {
                     let rhs = self.expr(value);
                     let rhs = match op {
                         Some(bo) => {
-                            let cur = format!("Value::get_field(&{}.borrow(), \"{}\")", obj_str(&o), name);
+                            let cur = format!("Value::get_field(&{}, \"{}\")", o, name);
                             self.binop_value(bo, &cur, &rhs)
                         }
                         None => rhs,
                     };
                     self.w(&format!(
-                        "Value::set_field(&{}.borrow(), \"{}\", {});",
-                        obj_str(&o),
+                        "Value::set_field(&{}, \"{}\", {});",
+                        o,
                         name,
                         rhs
                     ));
@@ -1049,17 +1268,16 @@ impl<'a> Gen<'a> {
                     let rhs = match op {
                         Some(bo) => {
                             let cur = format!(
-                                "Value::index_get(&{}.borrow(), &{})",
-                                obj_str(&o),
-                                i
+                                "Value::index_get(&{}, &{})",
+                                o, i
                             );
                             self.binop_value(bo, &cur, &rhs)
                         }
                         None => rhs,
                     };
                     self.w(&format!(
-                        "Value::index_set(&{}.borrow(), &{}, {});",
-                        obj_str(&o),
+                        "Value::index_set(&{}, &{}, {});",
+                        o,
                         i,
                         rhs
                     ));
@@ -1116,7 +1334,7 @@ impl<'a> Gen<'a> {
             BinOp::Eq => format!("Value::eq(&{}, &{})", l, r),
             BinOp::Ne => format!("(!Value::eq(&{}, &{}))", l, r),
             BinOp::Lt => format!("Value::lt(&{}, &{})", l, r),
-            BinOp::Le => format!("(!Value::lt(&{}, {}))", r, l),
+            BinOp::Le => format!("(!Value::lt(&{}, &{}))", r, l),
             BinOp::Gt => format!("Value::lt(&{}, &{})", r, l),
             BinOp::Ge => format!("(!Value::lt(&{}, &{}))", l, r),
             _ => "false".into(),
@@ -1142,6 +1360,8 @@ impl<'a> Gen<'a> {
     fn cond(&mut self, e: &Expr) -> String {
         if self.dynamic {
             format!("({}).truthy()", self.expr(e))
+        } else if self.is_val_expr(e) {
+            format!("({}).truthy()", self.expr_typed(e, &Ty::Any))
         } else {
             self.expr_typed(e, &Ty::Bool)
         }
@@ -1193,33 +1413,56 @@ impl<'a> Gen<'a> {
                 UnOp::Neg => format!("Value::sub(&Value::Int(0), &{})", self.expr(e)),
                 UnOp::BitNot => format!("Value::Int(!({}).display().parse::<i64>().unwrap_or(0))", self.expr(e)),
                 UnOp::PreInc | UnOp::PreDec => {
-                    let one = if matches!(op, UnOp::PreInc) { "Add" } else { "Sub" };
-                    // only identifiers supported
+                    let one = if matches!(op, UnOp::PreInc) { "add" } else { "sub" };
                     match &**e {
                         Expr::Ident(n) => {
                             let id = rust_ident(n);
-                            let cur = self.load(&id);
-                            self.w(&format!(
-                                "*{}.borrow_mut() = Value::{}(&{}, &Value::Int(1));",
-                                id, one, cur
-                            ));
-                            self.load(&id)
+                            let is_global = self.globals.contains(n);
+                            let load = if is_global {
+                                format!("{}()", id)
+                            } else {
+                                format!("{}.borrow().clone()", id)
+                            };
+                            if is_global {
+                                self.w(&format!(
+                                    "set_{}(Value::{}(&{}, &Value::Int(1)));",
+                                    id, one, load
+                                ));
+                            } else {
+                                self.w(&format!(
+                                    "*{}.borrow_mut() = Value::{}(&{}, &Value::Int(1));",
+                                    id, one, load
+                                ));
+                            }
+                            format!("{}()", id)
                         }
                         _ => "Value::Undefined".into(),
                     }
                 }
             },
             Expr::Post { op, e } => {
-                let one = if matches!(op, UnOp::PreInc) { "Add" } else { "Sub" };
+                let one = if matches!(op, UnOp::PreInc) { "add" } else { "sub" };
                 match &**e {
                     Expr::Ident(n) => {
                         let id = rust_ident(n);
-                        let old = self.load(&id);
-                        let cur = self.load(&id);
-                        self.w(&format!(
-                            "*{}.borrow_mut() = Value::{}(&{}, &Value::Int(1));",
-                            id, one, cur
-                        ));
+                        let is_global = self.globals.contains(n);
+                        let load = if is_global {
+                            format!("{}()", id)
+                        } else {
+                            format!("{}.borrow().clone()", id)
+                        };
+                        let old = load.clone();
+                        if is_global {
+                            self.w(&format!(
+                                "set_{}(Value::{}(&{}, &Value::Int(1)));",
+                                id, one, load
+                            ));
+                        } else {
+                            self.w(&format!(
+                                "*{}.borrow_mut() = Value::{}(&{}, &Value::Int(1));",
+                                id, one, load
+                            ));
+                        }
                         old
                     }
                     _ => "Value::Undefined".into(),
@@ -1252,7 +1495,7 @@ impl<'a> Gen<'a> {
                     if self.globals.contains(name) {
                         let a: Vec<String> = args.iter().map(|x| self.expr(x)).collect();
                         return format!(
-                            "Value::call(&{}().get_field(\"new\"), vec![{}])",
+                            "Value::call(&Value::get_field(&{}(), \"new\"), vec![{}])",
                             rust_ident(name),
                             a.join(", ")
                         );
@@ -1261,7 +1504,7 @@ impl<'a> Gen<'a> {
                     if self.classes.contains_key(name) {
                         let a: Vec<String> = args.iter().map(|x| self.expr(x)).collect();
                         return format!(
-                            "Value::call(&__class_{}().get_field(\"new\"), vec![{}])",
+                            "Value::call(&Value::get_field(&__class_{}(), \"new\"), vec![{}])",
                             rust_ident(name),
                             a.join(", ")
                         );
@@ -1304,7 +1547,7 @@ impl<'a> Gen<'a> {
             }
             Expr::Field { obj, name, nullsafe } => {
                 let o = self.expr(obj);
-                let f = format!("{}.get_field(\"{}\")", o, name);
+                let f = format!("Value::get_field(&{}, \"{}\")", o, name);
                 if *nullsafe {
                     format!(
                         "(if matches!({}, Value::Null | Value::Undefined) {{ Value::Undefined }} else {{ {} }})",
@@ -1325,23 +1568,23 @@ impl<'a> Gen<'a> {
                 let hi = hi
                     .as_ref()
                     .map(|e| self.expr(e))
-                    .unwrap_or_else(|| format!("{}.get_field(\"length\")", o));
+                    .unwrap_or_else(|| format!("Value::get_field(&{}, \"length\")", o));
                 format!("Value::call_method(&{}, \"slice\", vec![{}, {}])", o, lo, hi)
             }
             Expr::Array(items) => {
                 // inline vec build so spread works
-                let mut code = String::from("rt({ let mut $v: Vec<Value> = Vec::new(); ");
+                let mut code = String::from("Value::Array(rt({ let mut __v: Vec<Value> = Vec::new(); ");
                 for it in items {
                     match it {
                         Expr::Spread(inner) => {
-                            code.push_str(&format!("$v.extend(__iter__({}).borrow().iter().cloned()); ", self.expr(inner)));
+                            code.push_str(&format!("__v.extend(__iter__({}).borrow().iter().cloned()); ", self.expr(inner)));
                         }
                         other => {
-                            code.push_str(&format!("$v.push({}); ", self.expr(other)));
+                            code.push_str(&format!("__v.push({}); ", self.expr(other)));
                         }
                     }
                 }
-                code.push_str("$v })");
+                code.push_str("__v }))");
                 code
             }
             Expr::Dict(pairs) => {
@@ -1369,7 +1612,7 @@ impl<'a> Gen<'a> {
                 } else {
                     let a: Vec<String> = args.iter().map(|x| self.expr(x)).collect();
                     format!(
-                        "Value::call(&{}().get_field(\"new\"), vec![{}])",
+                        "Value::call(&Value::get_field(&{}(), \"new\"), vec![{}])",
                         rust_ident(class),
                         a.join(", ")
                     )
@@ -1397,6 +1640,7 @@ impl<'a> Gen<'a> {
                         cell_locals: inner_cells,
                         class_of: self.scope.class_of.clone(),
                         parent_of: self.scope.parent_of.clone(),
+                        ret_ty: None,
                     },
                     globals: self.globals.clone(),
                     classes: self.classes.clone(),
@@ -1526,15 +1770,27 @@ impl<'a> Gen<'a> {
                 format!("{}.borrow().clone()", id)
             }
         } else {
-            if self.scope.locals.contains_key(name) {
-                if self.is_ref_local(name) {
-                    format!("{}.clone()", id)
-                } else if self.scope.params.contains(name) {
-                    format!("{}.clone()", id)
-                } else {
-                    format!("{}.clone()", id)
+            if let Some(t) = self.scope.locals.get(name) {
+                match self.kind_of(t) {
+                    VKind::Val => format!("{}.borrow().clone()", id),
+                    _ => format!("{}.clone()", id),
                 }
             } else if self.globals.contains(name) {
+                format!("{}()", id)
+            } else if self.scope.is_method {
+                if let Some(cname) = self.scope.class_of.clone() {
+                    if let Some(c) = self.classes.get(&cname) {
+                        let is_field = c.fields.iter().any(|f| f.name == name)
+                            || self
+                                .classes
+                                .get(&cname)
+                                .map(|pc| self.all_fields(pc).iter().any(|(n, _)| n == name))
+                                .unwrap_or(false);
+                        if is_field {
+                            return format!("this.borrow().{}.clone()", id);
+                        }
+                    }
+                }
                 format!("{}()", id)
             } else {
                 format!("{}()", id)
@@ -1671,14 +1927,44 @@ impl<'a> Gen<'a> {
                     BinOp::And => format!("(({}) && ({}))", self.expr_typed(l, &Ty::Bool), self.expr_typed(r, &Ty::Bool)),
                     BinOp::Or => format!("(({}) || ({}))", self.expr_typed(l, &Ty::Bool), self.expr_typed(r, &Ty::Bool)),
                     _ => {
-                        // string + string -> concat
-                        let is_str = self.expr_is_string(l) || self.expr_is_string(r);
-                        if is_str && matches!(op, BinOp::Add) {
-                            format!(
-                                "format!(\"{{}}{{}}\", {}, {})",
-                                self.expr_typed(l, &Ty::Str),
-                                self.expr_typed(r, &Ty::Str)
-                            )
+                        // any Value operand -> dynamic Value semantics
+                        if self.is_val_expr(l) || self.is_val_expr(r) {
+                            let lv = self.to_value(l);
+                            let rv = self.to_value(r);
+                            match op {
+                                BinOp::Eq => format!(
+                                    "Value::Bool(Value::eq(&{}, &{}))",
+                                    lv, rv
+                                ),
+                                BinOp::Ne => format!(
+                                    "Value::Bool(!Value::eq(&{}, &{}))",
+                                    lv, rv
+                                ),
+                                BinOp::Lt => format!("Value::Bool(Value::lt(&{}, &{}))", lv, rv),
+                                BinOp::Le => format!("Value::Bool(!Value::lt(&{}, &{}))", rv, lv),
+                                BinOp::Gt => format!("Value::Bool(Value::lt(&{}, &{}))", rv, lv),
+                                BinOp::Ge => format!("Value::Bool(!Value::lt(&{}, &{}))", lv, rv),
+                                BinOp::In => format!(
+                                    "Value::Bool(__contains__(&{}, &{}))",
+                                    rv, lv
+                                ),
+                                _ => {
+                                    let v = self.binop_value(*op, &lv, &rv);
+                                    self.from_value(&v, hint)
+                                }
+                            }
+                        } else if self.expr_is_string(l) || self.expr_is_string(r) {
+                            if matches!(op, BinOp::Add) {
+                                format!(
+                                    "format!(\"{{}}{{}}\", {}, {})",
+                                    self.expr_typed(l, &Ty::Str),
+                                    self.expr_typed(r, &Ty::Str)
+                                )
+                            } else {
+                                let ls = self.expr_typed(l, &Ty::Long);
+                                let rs = self.expr_typed(r, &Ty::Long);
+                                self.binop_typed(*op, &ls, &rs)
+                            }
                         } else {
                             let ls = self.expr_typed(l, &Ty::Long);
                             let rs = self.expr_typed(r, &Ty::Long);
@@ -1694,6 +1980,15 @@ impl<'a> Gen<'a> {
                 UnOp::PreInc | UnOp::PreDec => match &**e {
                     Expr::Ident(n) => {
                         let id = rust_ident(n);
+                        if self.is_val_expr(e) {
+                            let one = if matches!(op, UnOp::PreInc) { "add" } else { "sub" };
+                            let cur = format!("{}.borrow().clone()", id);
+                            self.w(&format!(
+                                "*{}.borrow_mut() = Value::{}(&{}, &Value::Int(1));",
+                                id, one, cur
+                            ));
+                            return cur;
+                        }
                         let delta = if matches!(op, UnOp::PreInc) { "+" } else { "-" };
                         self.w(&format!("{} {}= 1;", id, delta));
                         id
@@ -1704,6 +1999,15 @@ impl<'a> Gen<'a> {
             Expr::Post { op, e } => match &**e {
                 Expr::Ident(n) => {
                     let id = rust_ident(n);
+                    if self.is_val_expr(e) {
+                        let one = if matches!(op, UnOp::PreInc) { "add" } else { "sub" };
+                        let cur = format!("{}.borrow().clone()", id);
+                        self.w(&format!(
+                            "*{}.borrow_mut() = Value::{}(&{}, &Value::Int(1));",
+                            id, one, cur
+                        ));
+                        return cur;
+                    }
                     let delta = if matches!(op, UnOp::PreInc) { "+" } else { "-" };
                     self.w(&format!("{} {}= 1;", id, delta));
                     id
@@ -1723,6 +2027,11 @@ impl<'a> Gen<'a> {
                 }
             }
             Expr::Index { obj, idx } => {
+                if self.is_val_expr(obj) {
+                    let o = self.expr_typed(obj, &Ty::Any);
+                    let iv = self.to_value(idx);
+                    return format!("Value::index_get(&{}, &{})", o, iv);
+                }
                 let o = self.expr_typed(obj, &Ty::Any);
                 let i = self.expr_typed(idx, &Ty::Long);
                 format!("{}.borrow()[{} as usize].clone()", o, i)
@@ -1741,14 +2050,28 @@ impl<'a> Gen<'a> {
                     .iter()
                     .map(|it| self.expr_typed(it, &Ty::Any))
                     .collect();
-                format!("rt(vec![{}])", elems.join(", "))
+                if hint.is_any() {
+                    let vals: Vec<String> =
+                        items.iter().map(|it| self.to_value(it)).collect();
+                    format!("Value::array(vec![{}])", vals.join(", "))
+                } else {
+                    format!("rt(vec![{}])", elems.join(", "))
+                }
             }
             Expr::Dict(pairs) => {
                 let entries: Vec<String> = pairs
                     .iter()
                     .map(|(k, v)| format!("({}, {})", self.expr_typed(k, &Ty::Any), self.expr_typed(v, &Ty::Any)))
                     .collect();
-                format!("rt([{}].into_iter().collect())", entries.join(", "))
+                if hint.is_any() {
+                    let vals: Vec<String> = pairs
+                        .iter()
+                        .map(|(k, v)| format!("({}, {})", self.to_value(k), self.to_value(v)))
+                        .collect();
+                    format!("__dict_new__(vec![{}])", vals.join(", "))
+                } else {
+                    format!("rt([{}].into_iter().collect())", entries.join(", "))
+                }
             }
             Expr::Object(fields) => {
                 // struct composite literal
@@ -1817,6 +2140,7 @@ impl<'a> Gen<'a> {
                         cell_locals: params.iter().map(|p| p.name.clone()).collect(),
                         class_of: None,
                         parent_of: None,
+                        ret_ty: None,
                     },
                     globals: self.globals.clone(),
                     classes: self.classes.clone(),
@@ -1880,10 +2204,22 @@ impl<'a> Gen<'a> {
             Expr::Range { lo, hi, inclusive } => {
                 let l = self.expr_typed(lo, &Ty::Long);
                 let h = self.expr_typed(hi, &Ty::Long);
-                if *inclusive {
-                    format!("({}..={}).collect::<Vec<i64>>()", l, h)
+                if hint.is_any() {
+                    if *inclusive {
+                        format!(
+                            "Value::Array(rt(({}..={}).map(|i| Value::Int(i)).collect::<Vec<Value>>()))",
+                            l, h
+                        )
+                    } else {
+                        format!(
+                            "Value::Array(rt(({}..{}).map(|i| Value::Int(i)).collect::<Vec<Value>>()))",
+                            l, h
+                        )
+                    }
+                } else if *inclusive {
+                    format!("rt(({}..={}).collect::<Vec<i64>>())", l, h)
                 } else {
-                    format!("({}..{}).collect::<Vec<i64>>()", l, h)
+                    format!("rt(({}..{}).collect::<Vec<i64>>())", l, h)
                 }
             }
             Expr::Named { name, e } => format!("{}: {}", rust_ident(name), self.expr_typed(e, &Ty::Any)),
@@ -1924,6 +2260,14 @@ impl<'a> Gen<'a> {
     fn typed_call(&mut self, callee: &Expr, args: &[Expr]) -> String {
         if let Expr::Ident(name) = callee {
             let a: Vec<String> = args.iter().map(|x| self.expr_typed(x, &Ty::Any)).collect();
+            // Go two-value map lookup helper
+            if name == "__map_has__" {
+                if args.len() == 2 {
+                    let m = self.to_value(&args[0]);
+                    let k = self.to_value(&args[1]);
+                    return format!("__map_has__(&{}, &{})", m, k);
+                }
+            }
             // Go builtins
             match name.as_str() {
                 "len" => return format!("{}.borrow().len() as i64", a[0]),
@@ -1966,12 +2310,68 @@ impl<'a> Gen<'a> {
             if self.functions.contains(name) {
                 return format!("{}({})", rust_ident(name), a.join(", "));
             }
-            // class static method
-            for cname in &self.classes_order.clone() {
-                let prefix = format!("{}_", cname);
-                if name.starts_with(&prefix) {
-                    // e.g. Name_method handled elsewhere
+            // struct composite literal: __structinit_Name(...)
+            if let Some(cname) = name.strip_prefix("__structinit_") {
+                let cname_id = rust_type_name(cname);
+                let all_named =
+                    !args.is_empty() && args.iter().all(|x| matches!(x, Expr::Named { .. }));
+                if all_named {
+                    let sets: Vec<String> = args
+                        .iter()
+                        .map(|x| match x {
+                            Expr::Named { name, e } => format!(
+                                "{}: {}",
+                                rust_ident(name),
+                                self.expr_typed(e, &Ty::Any)
+                            ),
+                            _ => unreachable!(),
+                        })
+                        .collect();
+                    return format!("rt({} {{ {} }})", cname_id, sets.join(", "));
                 }
+                let c = self.classes.get(cname);
+                let all_fields = c.map(|c| self.all_fields(c)).unwrap_or_default();
+                let sets: Vec<String> = all_fields
+                    .iter()
+                    .zip(args.iter())
+                    .map(|((n, _), v)| {
+                        format!("{}: {}", rust_ident(n), self.expr_typed(v, &Ty::Any))
+                    })
+                    .collect();
+                return format!("rt({} {{ {} }})", cname_id, sets.join(", "));
+            }
+            // class constructor call: Name(args)
+            if self.classes.contains_key(name) {
+                let cname = rust_type_name(name);
+                let c = self.classes.get(name).unwrap();
+                let all_fields = self.all_fields(c);
+                let all_named =
+                    !args.is_empty() && args.iter().all(|x| matches!(x, Expr::Named { .. }));
+                if all_named {
+                    let sets: Vec<String> = args
+                        .iter()
+                        .map(|x| match x {
+                            Expr::Named { name, e } => format!(
+                                "{}: {}",
+                                rust_ident(name),
+                                self.expr_typed(e, &Ty::Any)
+                            ),
+                            _ => unreachable!(),
+                        })
+                        .collect();
+                    return format!("rt({} {{ {} }})", cname, sets.join(", "));
+                }
+                if !all_fields.is_empty() && args.len() <= all_fields.len() {
+                    let sets: Vec<String> = all_fields
+                        .iter()
+                        .zip(args.iter())
+                        .map(|((n, _), v)| {
+                            format!("{}: {}", rust_ident(n), self.expr_typed(v, &Ty::Any))
+                        })
+                        .collect();
+                    return format!("rt({} {{ {} }})", cname, sets.join(", "));
+                }
+                return format!("rt({}::new())", cname);
             }
             return format!("{}({})", rust_ident(name), a.join(", "));
         }
@@ -2015,14 +2415,14 @@ impl<'a> Gen<'a> {
             "to_string" | "toString" => format!("format!(\"{{:?}}\", {})", o),
             "keys" => format!("rt({}.borrow().keys().cloned().collect::<Vec<_>>())", o),
             "values" => format!("rt({}.borrow().values().cloned().collect::<Vec<_>>())", o),
-            _ => format!("__unknown_method__({}, \"{}\")", o, name),
+            _ => format!("unimplemented!(\"method {} (unknown type)\")", name),
         }
     }
 
     fn ty(&self, t: &Ty) -> String {
         match t {
             Ty::Any | Ty::Named(_) => "Value".into(),
-            Ty::Int => "i32".into(),
+            Ty::Int => "i64".into(),
             Ty::Long => "i64".into(),
             Ty::Float | Ty::Double => "f64".into(),
             Ty::Bool => "bool".into(),
@@ -2041,7 +2441,7 @@ impl<'a> Gen<'a> {
 fn default_value(t: &Ty) -> String {
     match t {
         Ty::Any | Ty::Named(_) => "Value::Undefined".into(),
-        Ty::Int => "0i32".into(),
+        Ty::Int => "0i64".into(),
         Ty::Long => "0i64".into(),
         Ty::Float | Ty::Double => "0.0f64".into(),
         Ty::Bool => "false".into(),
@@ -2063,7 +2463,7 @@ fn default_value(t: &Ty) -> String {
 fn default_inner(t: &Ty) -> String {
     match t {
         Ty::Any => "Value".into(),
-        Ty::Int => "i32".into(),
+        Ty::Int => "i64".into(),
         Ty::Long => "i64".into(),
         Ty::Float | Ty::Double => "f64".into(),
         Ty::Bool => "bool".into(),
@@ -2081,6 +2481,18 @@ fn default_inner(t: &Ty) -> String {
         Ty::Func { .. } => "Value".into(),
         Ty::Named(_) => "Value".into(),
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VKind {
+    Val,
+    Ref,
+    Prim,
+    Int,
+    Float,
+    Bool,
+    Str,
+    Unknown,
 }
 
 fn obj_str(o: &str) -> String {

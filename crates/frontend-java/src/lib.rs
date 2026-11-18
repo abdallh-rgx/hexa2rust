@@ -563,7 +563,9 @@ impl JavaParser {
             Ty::Str
         } else {
             let name = self.parse_type_name()?;
-            if self.at_punct("<") {
+            if name == "String" || name == "CharSequence" {
+                Ty::Str
+            } else if self.at_punct("<") {
                 self.skip_generics()?;
                 if name == "List" || name == "ArrayList" || name == "Collection" {
                     Ty::Array(Box::new(Ty::Any))

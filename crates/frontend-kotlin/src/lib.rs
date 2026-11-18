@@ -188,7 +188,10 @@ impl KotlinParser {
                 decls.push(Decl::Class(c));
                 continue;
             }
-            if self.at_kw("data") && self.nxt(1).is_kw("class") {
+            if self.cur().kind == Tok::Ident
+                && self.cur().text == "data"
+                && self.nxt(1).is_kw("class")
+            {
                 self.bump();
                 let mut c = self.parse_class()?;
                 c.is_data = true;
@@ -579,7 +582,7 @@ impl KotlinParser {
             }
             ty
         } else {
-            Ty::Any
+            Ty::Void
         };
         // body: block or = expr
         if self.eat_punct("=") {

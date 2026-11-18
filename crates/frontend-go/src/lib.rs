@@ -223,10 +223,14 @@ impl GoParser {
             if self.at_punct("(") {
                 self.bump(); // (
                 if self.eat_punct("*") {}
-                let recv_ty = self.expect_ident()?;
-                if self.cur().kind == Tok::Ident {
-                    self.bump(); // receiver name
-                }
+                let first = self.expect_ident()?;
+                // Go receivers are (name Type); handle bare (Type) too
+                let recv_ty = if self.cur().kind == Tok::Ident {
+                    let _name = first;
+                    self.bump().text // the type follows the name
+                } else {
+                    first // (Type) without a receiver name
+                };
                 self.expect_punct(")")?;
                 let fname = self.expect_ident()?;
                 if self.at_punct("[") {
@@ -882,18 +886,64 @@ impl GoParser {
             self.bump();
             init = self.parse_var_spec(is_const)?;
         } else if !self.at_punct("{") {
+            let save = self.pos;
             let e = self.parse_simple()?;
             if self.at_punct(":=") {
-                self.bump();
-                let name = match &e {
-                    Expr::Ident(n) => n.clone(),
-                    _ => return Err(self.unsupported("complex := in if")),
-                };
-                let value = self.parse_simple()?;
-                init.push(Stmt::Local { name, ty: Ty::Any, init: Some(value), mutable: true });
+                if let Expr::Ident(name) = &e {
+                    self.bump();
+                    let value = self.parse_simple()?;
+                    init.push(Stmt::Local {
+                        name: name.clone(),
+                        ty: Ty::Any,
+                        init: Some(value),
+                        mutable: true,
+                    });
+                } else {
+                    return Err(self.unsupported("complex := in if"));
+                }
+            } else if self.at_punct(",") {
+                // v, ok := m[k]
+                self.pos = save;
+                let names = self.parse_ident_list()?;
+                if self.at_punct(":=") {
+                    self.bump();
+                    if names.len() == 2 {
+                        let value = self.parse_expr()?;
+                        if let Expr::Index { obj, idx } = value {
+                            let obj = *obj;
+                            let idx = *idx;
+                            let has = Expr::call(
+                                Expr::ident("__map_has__"),
+                                vec![obj.clone(), idx.clone()],
+                            );
+                            let get = Expr::index(obj, idx);
+                            init.push(Stmt::Local {
+                                name: names[0].clone(),
+                                ty: Ty::Any,
+                                init: Some(get),
+                                mutable: true,
+                            });
+                            init.push(Stmt::Local {
+                                name: names[1].clone(),
+                                ty: Ty::Any,
+                                init: Some(has),
+                                mutable: true,
+                            });
+                        } else {
+                            return Err(self.unsupported("multiple return values"));
+                        }
+                    } else {
+                        return Err(self.unsupported("multiple := targets"));
+                    }
+                } else {
+                    return Err(self.unsupported("tuple assignment in if"));
+                }
             } else {
                 init.push(Stmt::Expr(e));
             }
+        }
+        if !init.is_empty() {
+            self.eat_punct(";"); // Go: `if init; cond {`
         }
         let cond = self.parse_expr()?;
         let then = self.parse_block()?;

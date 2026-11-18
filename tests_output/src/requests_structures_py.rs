@@ -104,8 +104,8 @@ pub fn CaseInsensitiveDict___eq__(args: Vec<Value>) -> Value {
     let this: Rt<Value> = rt(args.get(0).cloned().unwrap_or(Value::Undefined));
     let self_: Rt<Value> = this.clone();
     let other: Rt<Value> = rt(args.get(1).cloned().unwrap_or(Value::Undefined));
+    let mut other_dict: Rt<Value> = rt(Value::Undefined);
     if (__isinstance__(&other.borrow().clone(), &__undefined__())).truthy() {
-        let mut other_dict: Rt<Value> = rt(Value::Undefined);
         *other_dict.borrow_mut() = Value::call(&Value::get_field(&__class_CaseInsensitiveDict(), "new"), vec![other.borrow().clone()]);
     } else {
         return __undefined__();

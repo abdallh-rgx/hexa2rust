@@ -54,7 +54,6 @@ pub fn Strings_padStart(string: String, minLength: i64, padChar: char) -> String
     loop { if !((i.clone() < minLength.clone())) { break; }
         let _ = { sb.clone().borrow_mut().push(padChar.clone()); };
         i += 1;
-        let _ = i;
     }
     let _ = { sb.clone().borrow_mut().push(string.clone()); };
     return format!("{:?}", sb.clone());
@@ -70,7 +69,6 @@ pub fn Strings_padEnd(string: String, minLength: i64, padChar: char) -> String {
     loop { if !((i.clone() < minLength.clone())) { break; }
         let _ = { sb.clone().borrow_mut().push(padChar.clone()); };
         i += 1;
-        let _ = i;
     }
     return format!("{:?}", sb.clone());
 }
@@ -104,11 +102,9 @@ pub fn Strings_commonPrefix(a: String, b: String) -> String {
     let mut p: i64 = 0i64;
     loop { if !((((p.clone() < maxPrefixLength.clone())) && ((unimplemented!("method charAt (unknown type)") == unimplemented!("method charAt (unknown type)"))))) { break; }
         p += 1;
-        let _ = p;
     }
     if ((validSurrogatePairAt(a.clone(), (p.clone() - 1i64))) || (validSurrogatePairAt(b.clone(), (p.clone() - 1i64)))) {
         p -= 1;
-        let _ = p;
     }
     return format!("{:?}", unimplemented!("method subSequence (unknown type)"));
 }
@@ -119,11 +115,9 @@ pub fn Strings_commonSuffix(a: String, b: String) -> String {
     let mut s: i64 = 0i64;
     loop { if !((((s.clone() < maxSuffixLength.clone())) && ((unimplemented!("method charAt (unknown type)") == unimplemented!("method charAt (unknown type)"))))) { break; }
         s += 1;
-        let _ = s;
     }
     if ((validSurrogatePairAt(a.clone(), ((a.clone().borrow().len() - s.clone()) - 1i64))) || (validSurrogatePairAt(b.clone(), ((b.clone().borrow().len() - s.clone()) - 1i64)))) {
         s -= 1;
-        let _ = s;
     }
     return format!("{:?}", unimplemented!("method subSequence (unknown type)"));
 }
@@ -156,7 +150,6 @@ pub fn Strings_lenientFormat(template: String, args: Rt<Vec<Rt<Object>>>) -> Str
             let _ = { builder.clone().borrow_mut().push(lenientToString(args.clone().borrow()[i.clone() as usize].clone())); };
             prefix = ", ".to_string();
             i += 1;
-            let _ = i;
         }
         let _ = { builder.clone().borrow_mut().push("]".to_string()); };
     }

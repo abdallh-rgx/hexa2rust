@@ -29,11 +29,11 @@ pub fn filter(args: Vec<Value>) -> Value {
     let mut args = args;
     let names: Rt<Value> = rt(args.get(0).cloned().unwrap_or(Value::Undefined));
     let pat: Rt<Value> = rt(args.get(1).cloned().unwrap_or(Value::Undefined));
-    let _ = Value::Str("Construct a list from those elements of the iterable NAMES that match PAT.".into());
     let mut result: Rt<Value> = rt(Value::Undefined);
+    let mut match_: Rt<Value> = rt(Value::Undefined);
+    let _ = Value::Str("Construct a list from those elements of the iterable NAMES that match PAT.".into());
     *result.borrow_mut() = Value::Array(rt({ let mut __v: Vec<Value> = Vec::new(); __v }));
     *pat.borrow_mut() = Value::call_method(&Value::get_field(&__undefined__(), "path"), "normcase", vec![pat.borrow().clone()]);
-    let mut match_: Rt<Value> = rt(Value::Undefined);
     *match_.borrow_mut() = Value::call(&Value::get_field(&_compile_pattern(), "new"), vec![pat.borrow().clone()]);
     if (Value::Bool(Value::eq(&Value::get_field(&__undefined__(), "path"), &__undefined__()))).truthy() {
         for __item in __iter__(names.borrow().clone()).borrow().iter() {
@@ -57,14 +57,14 @@ pub fn filterfalse(args: Vec<Value>) -> Value {
     let mut args = args;
     let names: Rt<Value> = rt(args.get(0).cloned().unwrap_or(Value::Undefined));
     let pat: Rt<Value> = rt(args.get(1).cloned().unwrap_or(Value::Undefined));
+    let mut match_: Rt<Value> = rt(Value::Undefined);
+    let mut result: Rt<Value> = rt(Value::Undefined);
     let _ = Value::Str("Construct a list from those elements of the iterable NAMES that do not match PAT.".into());
     *pat.borrow_mut() = Value::call_method(&Value::get_field(&__undefined__(), "path"), "normcase", vec![pat.borrow().clone()]);
-    let mut match_: Rt<Value> = rt(Value::Undefined);
     *match_.borrow_mut() = Value::call(&Value::get_field(&_compile_pattern(), "new"), vec![pat.borrow().clone()]);
     if (Value::Bool(Value::eq(&Value::get_field(&__undefined__(), "path"), &__undefined__()))).truthy() {
         return __to_list__(&Value::call_method(&__undefined__(), "filterfalse", vec![match_.borrow().clone(), names.borrow().clone()]));
     }
-    let mut result: Rt<Value> = rt(Value::Undefined);
     *result.borrow_mut() = Value::Array(rt({ let mut __v: Vec<Value> = Vec::new(); __v }));
     for __item in __iter__(names.borrow().clone()).borrow().iter() {
         let name: Rt<Value> = rt(__item.clone());
@@ -79,8 +79,8 @@ pub fn fnmatchcase(args: Vec<Value>) -> Value {
     let mut args = args;
     let name: Rt<Value> = rt(args.get(0).cloned().unwrap_or(Value::Undefined));
     let pat: Rt<Value> = rt(args.get(1).cloned().unwrap_or(Value::Undefined));
-    let _ = Value::Str("Test whether FILENAME matches PATTERN, including case.\n\n    This is a version of fnmatch() which doesn't case-normalize\n    its arguments.\n    ".into());
     let mut match_: Rt<Value> = rt(Value::Undefined);
+    let _ = Value::Str("Test whether FILENAME matches PATTERN, including case.\n\n    This is a version of fnmatch() which doesn't case-normalize\n    its arguments.\n    ".into());
     *match_.borrow_mut() = Value::call(&Value::get_field(&_compile_pattern(), "new"), vec![pat.borrow().clone()]);
     return Value::Bool(!(Value::Bool(Value::eq(&Value::call(&match_.borrow().clone(), vec![name.borrow().clone()]), &Value::Undefined))).truthy());
     Value::Undefined
@@ -89,11 +89,9 @@ pub fn translate(args: Vec<Value>) -> Value {
     let mut args = args;
     let pat: Rt<Value> = rt(args.get(0).cloned().unwrap_or(Value::Undefined));
     let _ = Value::Str("Translate a shell PATTERN to a regular expression.\n\n    There is no way to quote meta-characters.\n    ".into());
-    {
-        let _tgt: Rt<Value> = rt(_translate(vec![pat.borrow().clone(), Value::Str("*".into()), Value::Str(".".into())]));
-        let mut parts: Rt<Value> = rt(Value::index_get(&_tgt.borrow().clone(), &Value::Int(0i64)));
-        let mut star_indices: Rt<Value> = rt(Value::index_get(&_tgt.borrow().clone(), &Value::Int(1i64)));
-    }
+    let _tgt1: Rt<Value> = rt(_translate(vec![pat.borrow().clone(), Value::Str("*".into()), Value::Str(".".into())]));
+    let mut parts: Rt<Value> = rt(Value::index_get(&_tgt1.borrow().clone(), &Value::Int(0i64)));
+    let mut star_indices: Rt<Value> = rt(Value::index_get(&_tgt1.borrow().clone(), &Value::Int(1i64)));
     return _join_translated_parts(vec![parts.borrow().clone(), star_indices.borrow().clone()]);
     Value::Undefined
 }
@@ -103,33 +101,36 @@ pub fn _translate(args: Vec<Value>) -> Value {
     let star: Rt<Value> = rt(args.get(1).cloned().unwrap_or(Value::Undefined));
     let question_mark: Rt<Value> = rt(args.get(2).cloned().unwrap_or(Value::Undefined));
     let mut res: Rt<Value> = rt(Value::Undefined);
-    *res.borrow_mut() = Value::Array(rt({ let mut __v: Vec<Value> = Vec::new(); __v }));
     let mut add: Rt<Value> = rt(Value::Undefined);
-    *add.borrow_mut() = Value::get_field(&res.borrow().clone(), "append");
     let mut star_indices: Rt<Value> = rt(Value::Undefined);
+    let mut c: Rt<Value> = rt(Value::Undefined);
+    let mut i: Rt<Value> = rt(Value::Undefined);
+    let mut j: Rt<Value> = rt(Value::Undefined);
+    let mut stuff: Rt<Value> = rt(Value::Undefined);
+    let mut chunks: Rt<Value> = rt(Value::Undefined);
+    let mut k: Rt<Value> = rt(Value::Undefined);
+    let mut chunk: Rt<Value> = rt(Value::Undefined);
+    *res.borrow_mut() = Value::Array(rt({ let mut __v: Vec<Value> = Vec::new(); __v }));
+    *add.borrow_mut() = Value::get_field(&res.borrow().clone(), "append");
     *star_indices.borrow_mut() = Value::Array(rt({ let mut __v: Vec<Value> = Vec::new(); __v }));
-    {
-        let _tgt: Rt<Value> = rt(Value::Array(rt({ let mut __v: Vec<Value> = Vec::new(); __v.push(Value::Int(0i64)); __v.push(__len__(&pat.borrow().clone())); __v })));
-        let mut i: Rt<Value> = rt(Value::index_get(&_tgt.borrow().clone(), &Value::Int(0i64)));
-        let mut n: Rt<Value> = rt(Value::index_get(&_tgt.borrow().clone(), &Value::Int(1i64)));
-    }
+    let _tgt2: Rt<Value> = rt(Value::Array(rt({ let mut __v: Vec<Value> = Vec::new(); __v.push(Value::Int(0i64)); __v.push(__len__(&pat.borrow().clone())); __v })));
+    let mut i: Rt<Value> = rt(Value::index_get(&_tgt2.borrow().clone(), &Value::Int(0i64)));
+    let mut n: Rt<Value> = rt(Value::index_get(&_tgt2.borrow().clone(), &Value::Int(1i64)));
     loop { if !((Value::Bool(Value::lt(&i.borrow().clone(), &n.borrow().clone()))).truthy()) { break; }
-        let mut c: Rt<Value> = rt(Value::Undefined);
         *c.borrow_mut() = Value::index_get(&pat.borrow().clone(), &i.borrow().clone());
         *i.borrow_mut() = Value::add(&i.borrow().clone(), &Value::Int(1i64));
         if (Value::Bool(Value::eq(&c.borrow().clone(), &Value::Str("*".into())))).truthy() {
             let _ = Value::call_method(&star_indices.borrow().clone(), "append", vec![__len__(&res.borrow().clone())]);
             let _ = Value::call(&add.borrow().clone(), vec![star.borrow().clone()]);
             loop { if !(((if Value::Bool(Value::lt(&i.borrow().clone(), &n.borrow().clone())).truthy() { Value::Bool(Value::eq(&Value::index_get(&pat.borrow().clone(), &i.borrow().clone()), &Value::Str("*".into()))) } else { Value::Bool(false) })).truthy()) { break; }
-                let __rhs_8950 = Value::add(&i.borrow().clone(), &Value::Int(1i64));
-                *i.borrow_mut() = __rhs_8950;
+                let __rhs_9211 = Value::add(&i.borrow().clone(), &Value::Int(1i64));
+                *i.borrow_mut() = __rhs_9211;
             }
         } else {
             if (Value::Bool(Value::eq(&c.borrow().clone(), &Value::Str("?".into())))).truthy() {
                 let _ = Value::call(&add.borrow().clone(), vec![question_mark.borrow().clone()]);
             } else {
                 if (Value::Bool(Value::eq(&c.borrow().clone(), &Value::Str("[".into())))).truthy() {
-                    let mut j: Rt<Value> = rt(Value::Undefined);
                     *j.borrow_mut() = i.borrow().clone();
                     if ((if Value::Bool(Value::lt(&j.borrow().clone(), &n.borrow().clone())).truthy() { Value::Bool(Value::eq(&Value::index_get(&pat.borrow().clone(), &j.borrow().clone()), &Value::Str("!".into()))) } else { Value::Bool(false) })).truthy() {
                         *j.borrow_mut() = Value::add(&j.borrow().clone(), &Value::Int(1i64));
@@ -143,14 +144,11 @@ pub fn _translate(args: Vec<Value>) -> Value {
                     if (Value::Bool((!Value::lt(&j.borrow().clone(), &n.borrow().clone())))).truthy() {
                         let _ = Value::call(&add.borrow().clone(), vec![Value::Str("\\[".into())]);
                     } else {
-                        let mut stuff: Rt<Value> = rt(Value::Undefined);
                         *stuff.borrow_mut() = Value::call_method(&pat.borrow().clone(), "slice", vec![i.borrow().clone(), j.borrow().clone()]);
                         if (Value::Bool(!(Value::Bool(false)).truthy())).truthy() {
                             *stuff.borrow_mut() = Value::call_method(&stuff.borrow().clone(), "replace", vec![Value::Str("\\".into()), Value::Str("\\\\".into())]);
                         } else {
-                            let mut chunks: Rt<Value> = rt(Value::Undefined);
                             *chunks.borrow_mut() = Value::Array(rt({ let mut __v: Vec<Value> = Vec::new(); __v }));
-                            let mut k: Rt<Value> = rt(Value::Undefined);
                             *k.borrow_mut() = (if (Value::Bool(Value::eq(&Value::index_get(&pat.borrow().clone(), &i.borrow().clone()), &Value::Str("!".into())))).truthy() { Value::add(&i.borrow().clone(), &Value::Int(2i64)) } else { Value::add(&i.borrow().clone(), &Value::Int(1i64)) });
                             loop { if !((Value::Bool(true)).truthy()) { break; }
                                 *k.borrow_mut() = Value::call_method(&pat.borrow().clone(), "find", vec![Value::Str("-".into()), k.borrow().clone(), j.borrow().clone()]);
@@ -161,7 +159,6 @@ pub fn _translate(args: Vec<Value>) -> Value {
                                 *i.borrow_mut() = Value::add(&k.borrow().clone(), &Value::Int(1i64));
                                 *k.borrow_mut() = Value::add(&k.borrow().clone(), &Value::Int(3i64));
                             }
-                            let mut chunk: Rt<Value> = rt(Value::Undefined);
                             *chunk.borrow_mut() = Value::call_method(&pat.borrow().clone(), "slice", vec![i.borrow().clone(), j.borrow().clone()]);
                             if (chunk.borrow().clone()).truthy() {
                                 let _ = Value::call_method(&chunks.borrow().clone(), "append", vec![chunk.borrow().clone()]);
@@ -175,7 +172,9 @@ pub fn _translate(args: Vec<Value>) -> Value {
                                     let _ = __delete__(&Value::index_get(&chunks.borrow().clone(), &k.borrow().clone()));
                                 }
                             }
+                            let __cap_14859_0: Rt<Value> = chunks.clone();
                             *stuff.borrow_mut() = Value::call_method(&Value::Str("-".into()), "join", vec![Value::call(&Value::func(move |mut args: Vec<Value>| {
+                                let chunks: Rt<Value> = __cap_14859_0.clone();
                                 let mut _acc: Rt<Value> = rt(Value::Array(rt({ let mut __v: Vec<Value> = Vec::new(); __v })));
                                 for __item in __iter__(chunks.borrow().clone()).borrow().iter() {
                                     let s: Rt<Value> = rt(__item.clone());
@@ -220,21 +219,20 @@ pub fn _join_translated_parts(args: Vec<Value>) -> Value {
     let mut args = args;
     let parts: Rt<Value> = rt(args.get(0).cloned().unwrap_or(Value::Undefined));
     let star_indices: Rt<Value> = rt(args.get(1).cloned().unwrap_or(Value::Undefined));
+    let mut iter_star_indices: Rt<Value> = rt(Value::Undefined);
+    let mut j: Rt<Value> = rt(Value::Undefined);
+    let mut buffer: Rt<Value> = rt(Value::Undefined);
+    let mut i: Rt<Value> = rt(Value::Undefined);
+    let mut res: Rt<Value> = rt(Value::Undefined);
     if (Value::Bool(!(star_indices.borrow().clone()).truthy())).truthy() {
         return __concat__(vec![Value::Str("(?s:".into()), Value::call_method(&Value::Str("".into()), "join", vec![parts.borrow().clone()]), Value::Str(")z".into())]);
     }
-    let mut iter_star_indices: Rt<Value> = rt(Value::Undefined);
     *iter_star_indices.borrow_mut() = Value::call(&__undefined__(), vec![star_indices.borrow().clone()]);
-    let mut j: Rt<Value> = rt(Value::Undefined);
     *j.borrow_mut() = Value::call(&__undefined__(), vec![iter_star_indices.borrow().clone()]);
-    let mut buffer: Rt<Value> = rt(Value::Undefined);
     *buffer.borrow_mut() = Value::call_method(&parts.borrow().clone(), "slice", vec![Value::Int(0), j.borrow().clone()]);
-    {
-        let _tgt: Rt<Value> = rt(Value::Array(rt({ let mut __v: Vec<Value> = Vec::new(); __v.push(Value::get_field(&buffer.borrow().clone(), "append")); __v.push(Value::get_field(&buffer.borrow().clone(), "extend")); __v })));
-        let mut append: Rt<Value> = rt(Value::index_get(&_tgt.borrow().clone(), &Value::Int(0i64)));
-        let mut extend: Rt<Value> = rt(Value::index_get(&_tgt.borrow().clone(), &Value::Int(1i64)));
-    }
-    let mut i: Rt<Value> = rt(Value::Undefined);
+    let _tgt3: Rt<Value> = rt(Value::Array(rt({ let mut __v: Vec<Value> = Vec::new(); __v.push(Value::get_field(&buffer.borrow().clone(), "append")); __v.push(Value::get_field(&buffer.borrow().clone(), "extend")); __v })));
+    let mut append: Rt<Value> = rt(Value::index_get(&_tgt3.borrow().clone(), &Value::Int(0i64)));
+    let mut extend: Rt<Value> = rt(Value::index_get(&_tgt3.borrow().clone(), &Value::Int(1i64)));
     *i.borrow_mut() = Value::add(&j.borrow().clone(), &Value::Int(1i64));
     for __item in __iter__(iter_star_indices.borrow().clone()).borrow().iter() {
         let j: Rt<Value> = rt(__item.clone());
@@ -245,7 +243,6 @@ pub fn _join_translated_parts(args: Vec<Value>) -> Value {
     }
     let _ = Value::call(&append.borrow().clone(), vec![Value::Str(".*".into())]);
     let _ = Value::call(&extend.borrow().clone(), vec![Value::call_method(&parts.borrow().clone(), "slice", vec![i.borrow().clone(), Value::get_field(&parts.borrow().clone(), "length")])]);
-    let mut res: Rt<Value> = rt(Value::Undefined);
     *res.borrow_mut() = Value::call_method(&Value::Str("".into()), "join", vec![buffer.borrow().clone()]);
     return __concat__(vec![Value::Str("(?s:".into()), res.borrow().clone(), Value::Str(")z".into())]);
     Value::Undefined
@@ -254,12 +251,12 @@ pub fn __init_module__() {
     set___all__(Value::Array(rt({ let mut __v: Vec<Value> = Vec::new(); __v.push(Value::Str("filter".into())); __v.push(Value::Str("filterfalse".into())); __v.push(Value::Str("fnmatch".into())); __v.push(Value::Str("fnmatchcase".into())); __v.push(Value::Str("translate".into())); __v })));
     set__compile_pattern(Value::func(move |mut args: Vec<Value>| {
         let pat: Rt<Value> = rt(args.get(0).cloned().unwrap_or(Value::Undefined));
+        let mut pat_str: Rt<Value> = rt(Value::Undefined);
+        let mut res_str: Rt<Value> = rt(Value::Undefined);
+        let mut res: Rt<Value> = rt(Value::Undefined);
         if (__isinstance__(&pat.borrow().clone(), &__undefined__())).truthy() {
-            let mut pat_str: Rt<Value> = rt(Value::Undefined);
             *pat_str.borrow_mut() = __to_str__(&pat.borrow().clone());
-            let mut res_str: Rt<Value> = rt(Value::Undefined);
             *res_str.borrow_mut() = translate(vec![pat_str.borrow().clone()]);
-            let mut res: Rt<Value> = rt(Value::Undefined);
             *res.borrow_mut() = Value::call(&__undefined__(), vec![res_str.borrow().clone(), Value::Str("ISO-8859-1".into())]);
         } else {
             *res.borrow_mut() = translate(vec![pat.borrow().clone()]);

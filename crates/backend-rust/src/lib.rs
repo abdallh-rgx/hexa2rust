@@ -189,6 +189,7 @@ impl<'a> Gen<'a> {
                         scan_expr(value, out);
                     }
                     Stmt::Expr(e) => scan_expr(e, out),
+                    Stmt::Inline(b) => scan_block(b, out),
                     Stmt::If { cond, then, els } => {
                         scan_expr(cond, out);
                         scan_block(then, out);
@@ -663,6 +664,89 @@ impl<'a> Gen<'a> {
     // ------------------------------------------------------------------
     // functions
     // ------------------------------------------------------------------
+    /// Collect names assigned via `Stmt::Assign` / `Expr::AssignExpr` anywhere
+    /// in a statement list (recursing through every block-bearing statement).
+    fn collect_assigned_names_stmts(stmts: &[Stmt], out: &mut Vec<String>) {
+        for s in stmts {
+            match s {
+                Stmt::Assign { target, .. } => {
+                    if let Expr::Ident(n) = target {
+                        out.push(n.clone());
+                    }
+                }
+                Stmt::Expr(e) => {
+                    if let Expr::AssignExpr { target, .. } = e {
+                        if let Expr::Ident(n) = &**target {
+                            out.push(n.clone());
+                        }
+                    }
+                }
+                Stmt::If { then, els, .. } => {
+                    Self::collect_assigned_names_stmts(then, out);
+                    Self::collect_assigned_names_stmts(els, out);
+                }
+                Stmt::While { body, .. } => Self::collect_assigned_names_stmts(body, out),
+                Stmt::For { init, step, body, .. } => {
+                    Self::collect_assigned_names_stmts(init, out);
+                    Self::collect_assigned_names_stmts(step, out);
+                    Self::collect_assigned_names_stmts(body, out);
+                }
+                Stmt::ForEach { body, .. } => Self::collect_assigned_names_stmts(body, out),
+                Stmt::Block(b) | Stmt::Inline(b) => Self::collect_assigned_names_stmts(b, out),
+                Stmt::Match { arms, default, .. } => {
+                    for a in arms {
+                        Self::collect_assigned_names_stmts(&a.body, out);
+                    }
+                    if let Some(d) = default {
+                        Self::collect_assigned_names_stmts(d, out);
+                    }
+                }
+                Stmt::Try { body, catches, finally } => {
+                    Self::collect_assigned_names_stmts(body, out);
+                    for c in catches {
+                        Self::collect_assigned_names_stmts(&c.body, out);
+                    }
+                    if let Some(f) = finally {
+                        Self::collect_assigned_names_stmts(f, out);
+                    }
+                }
+                Stmt::Defer(b) => Self::collect_assigned_names_stmts(b, out),
+                _ => {}
+            }
+        }
+    }
+
+    /// Extract names of `Rt<Value>` cells referenced by generated code
+    /// (any identifier immediately followed by `.borrow()`/`.borrow_mut()`).
+    fn referenced_cells(code: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for pat in [".borrow()", ".borrow_mut()"] {
+            let mut from = 0;
+            while let Some(rel) = code[from..].find(pat) {
+                let i = from + rel;
+                let bytes = code.as_bytes();
+                let mut j = i;
+                while j > 0 {
+                    let c = bytes[j - 1];
+                    if c == b'_' || c.is_ascii_alphanumeric() {
+                        j -= 1;
+                    } else {
+                        break;
+                    }
+                }
+                let name = &code[j..i];
+                if !name.is_empty()
+                    && !name.chars().next().unwrap().is_ascii_digit()
+                    && !out.iter().any(|x| x == name)
+                {
+                    out.push(name.to_string());
+                }
+                from = i + pat.len();
+            }
+        }
+        out
+    }
+
     fn gen_dynamic_function(&mut self, f: &FunctionDecl, class_of: Option<String>) {
         let fname = rust_ident(&f.name);
         let mut scope = Scope::default();
@@ -730,6 +814,25 @@ impl<'a> Gen<'a> {
         let saved = std::mem::replace(&mut self.scope, scope);
         self.defer_stack.push(vec![]);
         let body = f.body.clone();
+        // Function-scoped locals (Python semantics): every name assigned
+        // anywhere in the body gets its cell declared up front, so values
+        // bound inside `if`/`else` branches remain visible afterwards.
+        {
+            let mut assigned: Vec<String> = Vec::new();
+            Self::collect_assigned_names_stmts(&body, &mut assigned);
+            for name in assigned {
+                if self.globals.contains(&name) || self.scope.locals.contains_key(&name) {
+                    continue;
+                }
+                let id = rust_ident(&name);
+                self.w(&format!(
+                    "let mut {0}: Rt<Value> = rt(Value::Undefined);",
+                    id
+                ));
+                self.scope.locals.insert(name.clone(), Ty::Any);
+                self.scope.cell_locals.insert(name);
+            }
+        }
         if self.scope.is_ctor {
             if let Some(cname) = &class_of {
                 self.w("let this: Rt<Value> = rt(Value::object(Obj::new()));");
@@ -912,8 +1015,10 @@ impl<'a> Gen<'a> {
                             self.assign(target, *op, value);
                         }
                         Expr::Post { .. } | Expr::Unary { op: UnOp::PreInc | UnOp::PreDec, .. } => {
-                            let v = self.expr_typed(e, &Ty::Any);
-                            self.w(&format!("let _ = {};", v));
+                            // update expressions emit their own effect statements;
+                            // binding their (non-callable) result would produce
+                            // dead `let _ = i();`-style code that fails to compile
+                            let _ = self.expr_typed(e, &Ty::Any);
                         }
                         _ => {
                             let v = self.expr(e);
@@ -1001,6 +1106,9 @@ impl<'a> Gen<'a> {
                 self.indent -= 1;
                 self.w("}");
             }
+            // Scoping-transparent block: no braces, so desugared
+            // destructuring declarations survive into the enclosing scope.
+            Stmt::Inline(b) => self.gen_block(b),
             Stmt::Match { subject, arms, default } => {
                 self.gen_match(subject, arms, default.as_ref());
             }
@@ -1688,7 +1796,7 @@ impl<'a> Gen<'a> {
                             } else {
                                 self.w(&format!("*{}.borrow_mut() = {};", id, tmp));
                             }
-                            format!("{}()", id)
+                            tmp
                         }
                         _ => "Value::Undefined".into(),
                     }
@@ -1921,6 +2029,26 @@ impl<'a> Gen<'a> {
                         ));
                     }
                 }
+                // Function-scoped locals for the closure body as well —
+                // Python module-level `def`s are emitted through this path.
+                if self.dynamic {
+                    let mut assigned: Vec<String> = Vec::new();
+                    Self::collect_assigned_names_stmts(body, &mut assigned);
+                    for name in assigned {
+                        if inner.scope.locals.contains_key(&name)
+                            || inner.globals.contains(&name)
+                        {
+                            continue;
+                        }
+                        let id = rust_ident(&name);
+                        inner.w(&format!(
+                            "let mut {0}: Rt<Value> = rt(Value::Undefined);",
+                            id
+                        ));
+                        inner.scope.locals.insert(name.clone(), Ty::Any);
+                        inner.scope.cell_locals.insert(name);
+                    }
+                }
                 match value {
                     Some(v) => {
                         let val = inner.expr(v);
@@ -1932,11 +2060,36 @@ impl<'a> Gen<'a> {
                     }
                 }
                 let code = std::mem::take(&mut inner.out);
-                let body_code = code
-                    .lines()
-                    .map(|l| format!("    {}", l))
-                    .collect::<Vec<_>>()
-                    .join("\n");
+                // Capture enclosing cells by CLONE, not by move: pre-clone
+                // every referenced cell before the closure expression and
+                // shadow-bind it inside, so `move` never steals a cell the
+                // enclosing scope still needs (fixes loops that recreate
+                // values captured by a closure in a previous iteration).
+                let caps: Vec<String> = Self::referenced_cells(&code)
+                    .into_iter()
+                    .filter(|n| self.scope.cell_locals.contains(n))
+                    .collect();
+                let k = self.pos_hint();
+                let mut prelude = String::new();
+                for (ci, name) in caps.iter().enumerate() {
+                    let cap = format!("__cap_{}_{}", k, ci);
+                    self.w(&format!(
+                        "let {0}: Rt<Value> = {1}.clone();",
+                        cap,
+                        rust_ident(name)
+                    ));
+                    prelude.push_str(&format!(
+                        "    let {0}: Rt<Value> = {1}.clone();\n",
+                        rust_ident(name),
+                        cap
+                    ));
+                }
+                let body_code = prelude
+                    + &code
+                        .lines()
+                        .map(|l| format!("    {}", l))
+                        .collect::<Vec<_>>()
+                        .join("\n");
                 format!(
                     "Value::func(move |mut args: Vec<Value>| {{\n{}\n}})",
                     body_code

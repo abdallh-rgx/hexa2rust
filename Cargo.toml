@@ -18,7 +18,6 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-authors = ["abdallh-rgx"]
 
 [profile.release]
 opt-level = 2

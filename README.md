@@ -53,7 +53,7 @@ cargo run --release -p cli -- corpus   tests/corpus --report reports/corpus.json
 
 ## Results (real-world corpus)
 
-**14 / 15 files transpile** (2,595 lines) from Facebook React, Google Guava/Gson/KSP/Now-in-Android, Kubernetes, CPython, requests, and VS Code; **8 / 14 generated modules also pass `cargo check`** with `#![forbid(unsafe_code)]`; **Z3 proves** the semantic-equivalence checks (floor-division/modulo translation proved correct, naive translation disproved with counterexamples). Full table: [reports/corpus.md](reports/corpus.md).
+**14 / 15 files transpile** (2,595 lines) from Facebook React, Google Guava/Gson/KSP/Now-in-Android, Kubernetes, CPython, requests, and VS Code; **10 / 14 generated modules also pass `cargo check`** with `#![forbid(unsafe_code)]`; **Z3 proves** the semantic-equivalence checks (floor-division/modulo translation proved correct, naive translation disproved with counterexamples). Full table: [reports/corpus.md](reports/corpus.md).
 
 ## Status / honest scope
 

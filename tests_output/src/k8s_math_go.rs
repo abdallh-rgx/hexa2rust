@@ -143,7 +143,6 @@ pub fn positiveScaleInt64(base: i64, scale: Rt<Scale>) -> Value {
                 }
             }
             *i.borrow_mut() = Value::add(&i.borrow().clone(), &Value::Int(1));
-            let _ = i.borrow().clone();
         }
     }
     if ((!ok.borrow().clone())).truthy() {
@@ -176,15 +175,12 @@ pub fn negativeScaleInt64(base: i64, scale: Rt<Scale>) -> Value {
             return Value::array(vec![Value::Int(0i64 as i64), Value::Str(format!("{:?}", true_()))]);
         }
         *i.borrow_mut() = Value::add(&i.borrow().clone(), &Value::Int(1));
-        let _ = i.borrow().clone();
     }
     if fraction.clone() {
         if (base.clone() > 0i64) {
             *value.borrow_mut() = Value::add(&value.borrow().clone(), &Value::Int(1));
-            let _ = value.borrow().clone();
         } else {
             *value.borrow_mut() = Value::sub(&value.borrow().clone(), &Value::Int(1));
-            let _ = value.borrow().clone();
         }
     }
     return Value::array(vec![value.borrow().clone(), Value::Str(format!("{:?}", (!fraction.clone())))]);
@@ -254,19 +250,16 @@ pub fn removeInt64Factors(value: i64, base: i64) -> Value {
     if __subj == 10i64 {
         loop { if !((((result() >= 10i64)) && (((result() % 10i64) == 0i64)))) { break; }
             times += 1;
-            let _ = times;
             result = (result() / 10i64);
         }
     } else if __subj == 1024i64 {
         loop { if !((((result() >= 1024i64)) && (((result() % 1024i64) == 0i64)))) { break; }
             times += 1;
-            let _ = times;
             result = (result() / 1024i64);
         }
     } else {
         loop { if !((((result() >= base.clone())) && (((result() % base.clone()) == 0i64)))) { break; }
             times += 1;
-            let _ = times;
             result = (result() / base.clone());
         }
     }
@@ -284,7 +277,6 @@ pub fn removeBigIntFactors(d: Rt<Int>, factor: Rt<Int>) -> Value {
             break;
         }
         times += 1;
-        let _ = times;
         {
             d = q.borrow().clone();
             *q.borrow_mut() = Value::Str(format!("{:?}", d.clone()));

@@ -372,6 +372,8 @@ pub struct PyParser {
     imports: Vec<String>,
     hoisted: Vec<Decl>,
     globals: Vec<String>,
+    /// counter for unique desugar temporaries ($tgt, $chain)
+    tmp_n: usize,
 }
 
 /// Parse a Python 3 source file into the unified IR.
@@ -384,6 +386,7 @@ pub fn parse_python(src: &str, file: &str) -> PResult<Module> {
         imports: vec![],
         hoisted: vec![],
         globals: vec![],
+        tmp_n: 0,
     };
     p.parse_module()
 }
@@ -401,6 +404,11 @@ impl PyParser {
             self.pos += 1;
         }
         t
+    }
+    /// Unique temporary name for desugaring (avoids duplicate `let` in one scope).
+    fn fresh_tmp(&mut self, base: &str) -> String {
+        self.tmp_n += 1;
+        format!("{}{}", base, self.tmp_n)
     }
     fn skip_newlines(&mut self) {
         while self.cur().kind == PTok::Newline {
@@ -904,17 +912,17 @@ impl PyParser {
                 return Ok(Some(self.make_assign(tgt, None, value)?));
             }
             let mut stmts = Vec::new();
-            let tmp = "$chain";
+            let tmp = self.fresh_tmp("$chain");
             stmts.push(Stmt::Local {
-                name: tmp.into(),
+                name: tmp.clone().into(),
                 ty: Ty::Any,
                 init: Some(value),
                 mutable: false,
             });
             for tgt in targets {
-                stmts.push(self.make_assign(tgt, None, Expr::ident("$chain"))?);
+                stmts.push(self.make_assign(tgt, None, Expr::ident(&tmp))?);
             }
-            return Ok(Some(Stmt::Block(stmts)));
+            return Ok(Some(Stmt::Inline(stmts)));
         }
         self.expect_newline()?;
         Ok(Some(Stmt::Expr(first)))
@@ -1056,15 +1064,15 @@ impl PyParser {
             Expr::Ident(_) | Expr::Field { .. } | Expr::Index { .. } | Expr::Paren(_) => {}
             Expr::Array(_) | Expr::Object(_) => {
                 // tuple/list destructuring assignment
-                let tmp = "$tgt";
+                let tmp = self.fresh_tmp("$tgt");
                 let mut stmts = vec![Stmt::Local {
-                    name: tmp.into(),
+                    name: tmp.clone().into(),
                     ty: Ty::Any,
                     init: Some(value),
                     mutable: false,
                 }];
-                stmts.extend(self.desugar_pattern(&target, &Expr::ident("$tgt"))?);
-                return Ok(Stmt::Block(stmts));
+                stmts.extend(self.desugar_pattern(&target, &Expr::ident(&tmp))?);
+                return Ok(Stmt::Inline(stmts));
             }
             _ => return Err(self.unsupported("invalid assignment target")),
         }

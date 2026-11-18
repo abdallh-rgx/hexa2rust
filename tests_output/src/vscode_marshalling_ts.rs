@@ -18,6 +18,7 @@ pub fn stringify(args: Vec<Value>) -> Value {
 pub fn parse(args: Vec<Value>) -> Value {
     let mut args = args;
     let text: Rt<Value> = rt(args.get(0).cloned().unwrap_or(Value::Undefined));
+    let mut data: Rt<Value> = rt(Value::Undefined);
     let mut data: Rt<Value> = rt(Value::call_method(&__undefined__(), "parse", vec![text.borrow().clone()]));
     *data.borrow_mut() = revive(vec![data.borrow().clone()]);
     let _ = revive(vec![data.borrow().clone()]);
@@ -58,9 +59,9 @@ pub fn revive(args: Vec<Value>) -> Value {
             loop { if !((Value::Bool(Value::lt(&i.borrow().clone(), &Value::get_field(&obj.borrow().clone(), "length")))).truthy()) { break; }
                 Value::index_set(&obj.borrow().clone(), &i.borrow().clone(), revive(vec![Value::index_get(&obj.borrow().clone(), &i.borrow().clone()), Value::add(&depth.borrow().clone(), &Value::Int(1i64))]));
                 let _ = revive(vec![Value::index_get(&obj.borrow().clone(), &i.borrow().clone()), Value::add(&depth.borrow().clone(), &Value::Int(1i64))]);
-                let __rhs_3415 = Value::add(&i.borrow().clone(), &Value::Int(1));
-                *i.borrow_mut() = __rhs_3415;
-                let _ = i();
+                let __rhs_3467 = Value::add(&i.borrow().clone(), &Value::Int(1));
+                *i.borrow_mut() = __rhs_3467;
+                let _ = __rhs_3467;
             }
         } else {
             for __item in __iter__(Value::call_method(&obj.borrow().clone(), "__keys__", vec![])).borrow().iter() {

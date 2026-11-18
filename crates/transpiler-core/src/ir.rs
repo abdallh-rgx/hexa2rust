@@ -225,6 +225,10 @@ pub enum Stmt {
     Break,
     Continue,
     Block(Block),
+    /// Statements inlined into the current scope WITHOUT a Rust block.
+    /// Desugared destructuring (Python `a, b = x, y`) uses this so the bound
+    /// variables remain visible after the statement ends.
+    Inline(Vec<Stmt>),
     Match {
         subject: Expr,
         arms: Vec<MatchArm>,
@@ -515,6 +519,7 @@ pub fn stmt_size(s: &Stmt) -> usize {
         Stmt::ForEach { iter, body, .. } => expr_size(iter) + stmts_size(body),
         Stmt::Return(e) => e.as_ref().map(expr_size).unwrap_or(0),
         Stmt::Block(b) => stmts_size(b),
+        Stmt::Inline(b) => stmts_size(b),
         Stmt::Match { subject, arms, default } => {
             expr_size(subject)
                 + arms.iter().map(|a| stmts_size(&a.body)).sum::<usize>()

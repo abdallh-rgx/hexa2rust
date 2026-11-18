@@ -19,9 +19,7 @@ dependencies = [
  "frontend-javascript",
  "frontend-kotlin",
  "frontend-python",
- "frontend-typescript",
  "transpiler-core",
- "transpiler-rt",
  "verifier-z3",
 ]
 

@@ -452,6 +452,9 @@ impl Value {
                 }
                 Value::Str(out)
             }
+            // String method semantics follow Python: `replace` replaces ALL
+            // occurrences. JS/TS `String.prototype.replace` (first-only)
+            // currently diverges — documented in README limitations.
             (Value::Str(s), "replace") => {
                 let from = args.first().map(|x| x.display()).unwrap_or_default();
                 let to = args.get(1).map(|x| x.display()).unwrap_or_default();
@@ -545,9 +548,6 @@ impl Value {
                 Value::array(v)
             }
             (Value::Str(s), "length") => Value::Int(s.chars().count() as i64),
-            (Value::Str(s), "toUpperCase") => Value::Str(s.to_uppercase()),
-            (Value::Str(s), "toLowerCase") => Value::Str(s.to_lowercase()),
-            (Value::Str(s), "trim") => Value::Str(s.trim().to_string()),
             (Value::Str(s), "split") => {
                 let sep = args.first().map(|x| x.display()).unwrap_or_else(|| ",".into());
                 if sep.is_empty() {
@@ -607,11 +607,6 @@ impl Value {
             (Value::Str(s), "endsWith") => {
                 let needle = args.first().map(|x| x.display()).unwrap_or_default();
                 Value::Bool(s.ends_with(&needle))
-            }
-            (Value::Str(s), "replace") => {
-                let from = args.first().map(|x| x.display()).unwrap_or_default();
-                let to = args.get(1).map(|x| x.display()).unwrap_or_default();
-                Value::Str(s.replacen(&from, &to, 1))
             }
             (Value::Object(o), "hasOwnProperty") => {
                 let key = args.first().map(|x| x.display()).unwrap_or_default();

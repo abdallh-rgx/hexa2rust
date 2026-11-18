@@ -26,10 +26,18 @@ Tool: `hexa2rust` — Java / JavaScript / Kotlin / Python / Go / TypeScript → 
 
 ## Tier 3 — `cargo check` of the generated modules (self-contained subset)
 
-**8 / 14 modules compile clean** with `#![forbid(unsafe_code)]`:
-react_symbols, react_validType, react_featureFlags, react_elemType, ksp_ApiFeatures, ksp_ExitCode, vscode_charCode, **requests_structures**.
+**10 / 14 modules compile clean** with `#![forbid(unsafe_code)]`:
+react_symbols, react_validType, react_featureFlags, react_elemType, ksp_ApiFeatures, ksp_ExitCode, vscode_charCode, vscode_marshalling, requests_structures, **cpython_fnmatch**.
 
-Remaining modules reference external APIs (k8s `inf.Dec`, Guava `Platform`, gson `JsonReader`, VS Code `URI`/`VSBuffer`); unknown calls are emitted as `unimplemented!(...)` stubs, residual errors are type-inference gaps around those external types — an honest boundary of the current backend.
+Reproduce with `scripts/check_modules.sh` — it compiles every generated module in `tests_output/src/` as a standalone crate (with `transpiler-rt`) and prints the per-module result.
+
+Remaining modules reference external APIs (k8s `inf.Dec`, Guava `Platform`, gson `JsonReader`, Kotlin `android.*`/`coil.*` imports) plus type-inference gaps around those external types — an honest boundary of the current backend.
+
+Recent backend fixes behind the 8/14 → 10/14 jump:
+- Python destructuring (`a, b = x, y`) no longer declares its variables inside a dead scope block (new `Stmt::Inline` IR node emitted without braces) — fixes CPython fnmatch (35 errors → 0).
+- All names assigned anywhere in a function/closure body are hoisted and pre-declared at the top (Python function-scoped-local semantics) — fixes branch-scoped bindings (`res` in `_compile_pattern`).
+- Closures capture enclosing cells by CLONE (pre-clone + shadow-bind) instead of stealing them by `move` — fixes Rc moves out of loop bodies (`Value::func(move …)` capturing `chunks`).
+- TS/JS `++i` / `i++` statements no longer emit a phantom `let _ = i();` call.
 
 ## Tier 4 — Z3 formal verification
 

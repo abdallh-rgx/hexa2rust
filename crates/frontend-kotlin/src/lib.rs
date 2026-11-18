@@ -11,7 +11,7 @@ use transpiler_core::lexer::*;
 
 const KOTLIN_KEYWORDS: &[&str] = &[
     "as", "break", "by", "class", "continue", "do", "else", "false", "for", "fun", "if",
-    "in", "interface", "is", "null", "object", "package", "return", "super", "this",
+    "import", "in", "interface", "is", "null", "object", "package", "return", "super", "this",
     "throw", "true", "try", "typealias", "typeof", "val", "var", "when", "while",
 ];
 

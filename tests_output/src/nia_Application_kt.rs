@@ -42,25 +42,3 @@ impl NiaApplication {
         let _ = (if isDebuggable() { Value::call_method(&StrictMode(), "setThreadPolicy", vec![Value::call_method(&Value::call_method(&Value::call_method(&Value::call(&Builder(), vec![]), "detectAll", vec![]), "penaltyLog", vec![]), "build", vec![])]) } else { Value::Undefined });
     }
 }
-pub fn __init_module__() {
-    let _ = import();
-    let _ = Value::get_field(&Value::get_field(&android(), "app"), "Application");
-    let _ = import();
-    let _ = Value::get_field(&Value::get_field(&Value::get_field(&android(), "content"), "pm"), "ApplicationInfo");
-    let _ = import();
-    let _ = Value::get_field(&Value::get_field(&android(), "os"), "StrictMode");
-    let _ = import();
-    let _ = Value::get_field(&Value::get_field(&Value::get_field(&Value::get_field(&android(), "os"), "StrictMode"), "ThreadPolicy"), "Builder");
-    let _ = import();
-    let _ = Value::get_field(&coil(), "ImageLoader");
-    let _ = import();
-    let _ = Value::get_field(&coil(), "ImageLoaderFactory");
-    let _ = import();
-    let _ = Value::get_field(&Value::get_field(&Value::get_field(&Value::get_field(&Value::get_field(&Value::get_field(&Value::get_field(&com(), "google"), "samples"), "apps"), "nowinandroid"), "sync"), "initializers"), "Sync");
-    let _ = import();
-    let _ = Value::get_field(&Value::get_field(&Value::get_field(&Value::get_field(&Value::get_field(&Value::get_field(&com(), "google"), "samples"), "apps"), "nowinandroid"), "util"), "ProfileVerifierLogger");
-    let _ = import();
-    let _ = Value::get_field(&Value::get_field(&Value::get_field(&dagger(), "hilt"), "android"), "HiltAndroidApp");
-    let _ = import();
-    let _ = Value::get_field(&Value::get_field(&javax(), "inject"), "Inject");
-}

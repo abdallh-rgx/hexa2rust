@@ -10,6 +10,7 @@ mkdir -p "$BASE/target"
 pass=0; fail=0; failed=""
 for f in tests_output/src/*.rs; do
   name=$(basename "$f" .rs)
+  [ "$name" = "main" ] && continue   # harness file, not a corpus module
   dir="$BASE/$name"
   rm -rf "$dir"; mkdir -p "$dir/src"
   cat > "$dir/Cargo.toml" <<EOF

@@ -725,7 +725,7 @@ pub mod prelude {
         __len__, __max__, __min__, __obj_assign__, __obj_spread__, __print__, __range__,
         __range3__, __round__, __sorted__, __sqrt__, __sum__, __to_float__, __to_int__,
         __to_list__, __to_str__, __try__, __typeof__, __values__, __map_new__, __merge__,
-        __entries_v__, __dict_new__, __contains__, __map_has__,
+        __entries_v__, __dict_new__, __contains__, __map_has__, __undefined__,
     };
     pub use std::cell::RefCell;
     pub use std::rc::Rc;
@@ -1176,4 +1176,9 @@ pub fn __map_has__(m: &Value, k: &Value) -> bool {
         }
         _ => false,
     }
+}
+
+/// placeholder for values coming from untranspiled external modules
+pub fn __undefined__() -> Value {
+    Value::Undefined
 }

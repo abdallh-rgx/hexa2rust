@@ -646,10 +646,18 @@ impl PyParser {
         if t.kind == PTok::Keyword {
             match t.text.as_str() {
                 "def" => {
-                    // nested def handled in parse_block; here error
+                    // nested def: bind as a local closure (keeps lexical scope)
                     let f = self.parse_function()?;
-                    self.hoisted.push(Decl::Function(f));
-                    return Ok(Some(Stmt::Pass));
+                    return Ok(Some(Stmt::Local {
+                        name: f.name.clone(),
+                        ty: Ty::Any,
+                        init: Some(Expr::Closure {
+                            params: f.params,
+                            body: f.body,
+                            value: None,
+                        }),
+                        mutable: false,
+                    }));
                 }
                 "if" => {
                     self.bump();

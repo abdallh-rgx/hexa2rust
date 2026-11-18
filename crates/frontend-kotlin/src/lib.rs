@@ -743,6 +743,13 @@ impl KotlinParser {
             self.bump();
             return Ok(Some(Stmt::Pass));
         }
+        // `enum class` in statement position (enum is an identifier in Kotlin)
+        if t.kind == Tok::Ident && t.text == "enum" && self.nxt(1).is_kw("class") {
+            self.bump();
+            let c = self.parse_class()?;
+            self.hoisted.push(Decl::Class(c));
+            return Ok(Some(Stmt::Pass));
+        }
         if t.kind == Tok::Keyword {
             match t.text.as_str() {
                 "val" | "var" => {
@@ -774,6 +781,13 @@ impl KotlinParser {
                     }));
                 }
                 "class" | "object" => {
+                    let c = self.parse_class()?;
+                    self.hoisted.push(Decl::Class(c));
+                    return Ok(Some(Stmt::Pass));
+                }
+                _ if t.kind == Tok::Ident && t.text == "enum" && self.nxt(1).is_kw("class") => {
+                    // enum class in statement position
+                    self.bump();
                     let c = self.parse_class()?;
                     self.hoisted.push(Decl::Class(c));
                     return Ok(Some(Stmt::Pass));

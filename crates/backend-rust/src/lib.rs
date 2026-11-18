@@ -126,7 +126,170 @@ impl<'a> Gen<'a> {
         }
     }
 
+    /// collect Ty::Class names referenced anywhere in the module
+    fn collect_referenced_classes(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        fn scan_ty(t: &Ty, out: &mut Vec<String>) {
+            match t {
+                Ty::Class(n) => out.push(n.clone()),
+                Ty::Array(inner) | Ty::Option(inner) => scan_ty(inner, out),
+                Ty::Map(k, v) => {
+                    scan_ty(k, out);
+                    scan_ty(v, out);
+                }
+                Ty::Func { params, ret } => {
+                    for p in params {
+                        scan_ty(p, out);
+                    }
+                    scan_ty(ret, out);
+                }
+                _ => {}
+            }
+        }
+        fn scan_expr(e: &Expr, out: &mut Vec<String>) {
+            match e {
+                Expr::Cast { ty, .. } => scan_ty(ty, out),
+                Expr::New { class, .. } => out.push(class.clone()),
+                Expr::Call { callee, args } => {
+                    scan_expr(callee, out);
+                    for a in args {
+                        scan_expr(a, out);
+                    }
+                }
+                Expr::Method { obj, args, .. } => {
+                    scan_expr(obj, out);
+                    for a in args {
+                        scan_expr(a, out);
+                    }
+                }
+                Expr::Field { obj, .. } | Expr::Index { obj, .. } => scan_expr(obj, out),
+                Expr::Binary { l, r, .. } => {
+                    scan_expr(l, out);
+                    scan_expr(r, out);
+                }
+                Expr::Unary { e, .. } | Expr::Post { e, .. } | Expr::Paren(e) => scan_expr(e, out),
+                Expr::AssignExpr { target, value, .. } => {
+                    scan_expr(target, out);
+                    scan_expr(value, out);
+                }
+                _ => {}
+            }
+        }
+        fn scan_block(b: &[Stmt], out: &mut Vec<String>) {
+            for st in b {
+                match st {
+                    Stmt::Local { ty, init, .. } => {
+                        scan_ty(ty, out);
+                        if let Some(e) = init {
+                            scan_expr(e, out);
+                        }
+                    }
+                    Stmt::Assign { target, value, .. } => {
+                        scan_expr(target, out);
+                        scan_expr(value, out);
+                    }
+                    Stmt::Expr(e) => scan_expr(e, out),
+                    Stmt::If { cond, then, els } => {
+                        scan_expr(cond, out);
+                        scan_block(then, out);
+                        scan_block(els, out);
+                    }
+                    Stmt::While { cond, body } => {
+                        scan_expr(cond, out);
+                        scan_block(body, out);
+                    }
+                    Stmt::For { init, cond, step, body } => {
+                        scan_block(init, out);
+                        if let Some(c) = cond {
+                            scan_expr(c, out);
+                        }
+                        scan_block(step, out);
+                        scan_block(body, out);
+                    }
+                    Stmt::ForEach { iter, body, .. } => {
+                        scan_expr(iter, out);
+                        scan_block(body, out);
+                    }
+                    Stmt::Return(Some(e)) => scan_expr(e, out),
+                    Stmt::Match { subject, arms, default } => {
+                        scan_expr(subject, out);
+                        for a in arms {
+                            scan_block(&a.body, out);
+                        }
+                        if let Some(d) = default {
+                            scan_block(d, out);
+                        }
+                    }
+                    Stmt::Throw(e) => scan_expr(e, out),
+                    Stmt::Try { body, catches, finally } => {
+                        scan_block(body, out);
+                        for c in catches {
+                            scan_block(&c.body, out);
+                        }
+                        if let Some(f) = finally {
+                            scan_block(f, out);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        for d in &self.module.decls {
+            match d {
+                Decl::Function(f) => {
+                    for p in &f.params {
+                        scan_ty(&p.ty, &mut out);
+                    }
+                    scan_ty(&f.ret, &mut out);
+                    scan_block(&f.body, &mut out);
+                }
+                Decl::Class(c) => {
+                    for fl in &c.fields {
+                        scan_ty(&fl.ty, &mut out);
+                        if let Some(e) = &fl.init {
+                            scan_expr(e, &mut out);
+                        }
+                    }
+                    for m in &c.methods {
+                        for p in &m.params {
+                            scan_ty(&p.ty, &mut out);
+                        }
+                        scan_ty(&m.ret, &mut out);
+                        scan_block(&m.body, &mut out);
+                    }
+                }
+                Decl::Global(g) => {
+                    scan_ty(&g.ty, &mut out);
+                    if let Some(e) = &g.init {
+                        scan_expr(e, &mut out);
+                    }
+                }
+                Decl::TypeAlias { ty, .. } => scan_ty(ty, &mut out),
+            }
+        }
+        out
+    }
+
     fn gen(&mut self) {
+        // stubs for external types referenced but not defined in this module
+        let referenced = self.collect_referenced_classes();
+        let mut stubbed: Set<String> = Set::new();
+        for name in referenced {
+            if !self.classes.contains_key(&name) && stubbed.insert(name.clone()) {
+                let id = rust_type_name(&name);
+                self.w(&format!(
+                    "// external type stub: {} (defined in another module)",
+                    name
+                ));
+                self.w("#[derive(Clone, Debug, Default)]");
+                self.w(&format!("pub struct {} {{}}", id));
+                self.w(&format!("impl {} {{", id));
+                self.indent += 1;
+                self.w("pub fn new() -> Self { Default::default() }");
+                self.indent -= 1;
+                self.w("}");
+            }
+        }
         // classes first (Rust items order-independent)
         let classes: Vec<&ClassDecl> = self
             .classes_order
@@ -159,11 +322,21 @@ impl<'a> Gen<'a> {
             }
         }
 
-        for f in &fns {
+        let mut seen: Set<String> = Set::new();
+        for f in fns {
+            let mut f = (*f).clone();
+            let mut name = f.name.clone();
+            let mut counter = 1;
+            while seen.contains(&name) {
+                counter += 1;
+                name = format!("{}_{}", f.name, counter);
+            }
+            f.name = name.clone();
+            seen.insert(name);
             if self.dynamic {
-                self.gen_dynamic_function(f, None);
+                self.gen_dynamic_function(&f, None);
             } else {
-                self.gen_typed_function(f, None);
+                self.gen_typed_function(&f, None);
             }
         }
         // module init + main
@@ -302,6 +475,30 @@ impl<'a> Gen<'a> {
                 .collect();
             let _ = items;
         }
+        // method name dedup (overloads -> Name, Name_2, ...)
+        let mut used: Set<String> = Set::new();
+        let c2 = c.clone();
+        let methods_deduped: Vec<FunctionDecl> = c2
+            .methods
+            .into_iter()
+            .map(|mut m| {
+                let mut nm = m.name.clone();
+                let mut ctr = 1;
+                while used.contains(&nm) {
+                    ctr += 1;
+                    nm = format!("{}_{}", m.name, ctr);
+                }
+                m.name = nm.clone();
+                used.insert(nm);
+                m
+            })
+            .collect();
+        let c = {
+            let mut c2 = c.clone();
+            c2.methods = methods_deduped;
+            c2
+        };
+        let c = &c;
         // method install helper: fn C__install_methods(obj: &Value)
         let methods: Vec<&FunctionDecl> = c.methods.iter().filter(|m| !m.is_static).collect();
         self.w(&format!(
@@ -316,7 +513,9 @@ impl<'a> Gen<'a> {
             ));
         }
         if let Some(parent) = &c.extends {
-            self.w(&format!("{}__install_methods(o);", rust_ident(parent)));
+            if self.classes.contains_key(parent) {
+                self.w(&format!("{}__install_methods(o);", rust_ident(parent)));
+            }
         }
         self.indent -= 1;
         self.w("}");
@@ -368,6 +567,30 @@ impl<'a> Gen<'a> {
         // methods as impl (taking &Rt<Self>) — plain methods with &self when
         // they do not assign fields; simpler & uniform: all take &Rt<Self>
         let c_ptr = format!("Rt<{}>", cname);
+        // overload dedup within the class
+        let mut used: Set<String> = Set::new();
+        let methods_deduped: Vec<FunctionDecl> = c
+            .methods
+            .clone()
+            .into_iter()
+            .map(|mut m| {
+                let mut nm = m.name.clone();
+                let mut ctr = 1;
+                while used.contains(&nm) {
+                    ctr += 1;
+                    nm = format!("{}_{}", m.name, ctr);
+                }
+                m.name = nm.clone();
+                used.insert(nm);
+                m
+            })
+            .collect();
+        let c = {
+            let mut c2 = c.clone();
+            c2.methods = methods_deduped;
+            c2
+        };
+        let c = &c;
         self.w(&format!("impl {} {{", cname));
         self.indent += 1;
         let mut has_method = false;
@@ -614,7 +837,7 @@ impl<'a> Gen<'a> {
         match s {
             Stmt::Pass | Stmt::Comment(_) => {}
             Stmt::Local { name, ty, init, mutable } => {
-                let id = rust_ident(name);
+                let id = self.local_name(name);
                 if self.dynamic {
                     let val = init
                         .as_ref()
@@ -1338,6 +1561,15 @@ impl<'a> Gen<'a> {
         self.out.len()
     }
 
+    fn local_name(&self, name: &str) -> String {
+        let id = rust_ident(name);
+        if id == "_" {
+            "__anon".to_string()
+        } else {
+            id
+        }
+    }
+
     fn binop_value(&mut self, op: BinOp, l: &str, r: &str) -> String {
         match op {
             BinOp::Add => format!("Value::add(&{}, &{})", l, r),
@@ -1611,7 +1843,7 @@ impl<'a> Gen<'a> {
                     .iter()
                     .map(|(k, v)| format!("({}, {})", self.expr(k), self.expr(v)))
                     .collect();
-                format!("__dict_new__([{}])", entries.join(", "))
+                format!("__dict_new__(vec![{}])", entries.join(", "))
             }
             Expr::Object(fields) => {
                 let mut parts = Vec::new();
@@ -1629,12 +1861,8 @@ impl<'a> Gen<'a> {
                     let a: Vec<String> = args.iter().map(|x| self.expr(x)).collect();
                     format!("{}_new(vec![{}])", rust_ident(class), a.join(", "))
                 } else {
-                    let a: Vec<String> = args.iter().map(|x| self.expr(x)).collect();
-                    format!(
-                        "Value::call(&Value::get_field(&{}(), \"new\"), vec![{}])",
-                        rust_ident(class),
-                        a.join(", ")
-                    )
+                    let _ = args;
+                    format!("unimplemented!(\"new {} (external class)\")", class)
                 }
             }
             Expr::Closure { params, body, value } => {
@@ -1735,7 +1963,7 @@ impl<'a> Gen<'a> {
                         InterpPart::E(e) => items.push(self.expr(e)),
                     }
                 }
-                format!("__concat__([{}])", items.join(", "))
+                format!("__concat__(vec![{}])", items.join(", "))
             }
             Expr::Range { lo, hi, inclusive } => {
                 let l = self.expr(lo);
@@ -1785,8 +2013,11 @@ impl<'a> Gen<'a> {
                 format!("{}()", id)
             } else if self.classes.contains_key(name) {
                 format!("__class_{}()", rust_ident(name))
+            } else if self.functions.contains(name) {
+                format!("Value::Func(Rc::new({}))", id)
             } else {
-                format!("{}.borrow().clone()", id)
+                // external module / untranspiled import
+                "__undefined__()".to_string()
             }
         } else {
             if let Some(t) = self.scope.locals.get(name) {

@@ -21,8 +21,8 @@ pub fn Counter__install_methods(o: &Value) {
 pub fn Counter_increment(args: Vec<Value>) -> Value {
     let mut args = args;
     let this: Rt<Value> = rt(args.get(0).cloned().unwrap_or(Value::Undefined));
-    let self_: Rt<Value> = rt(args.get(1).cloned().unwrap_or(Value::Undefined));
-    let by: Rt<Value> = rt(args.get(2).cloned().unwrap_or_else(|| Value::Int(1i64)));
+    let self_: Rt<Value> = this.clone();
+    let by: Rt<Value> = rt(args.get(1).cloned().unwrap_or_else(|| Value::Int(1i64)));
     Value::set_field(&self_.borrow().clone(), "value", Value::add(&Value::get_field(&self_.borrow().clone(), "value"), &by.borrow().clone()));
     return Value::get_field(&self_.borrow().clone(), "value");
     Value::Undefined
@@ -56,7 +56,7 @@ pub fn floordiv_demo(args: Vec<Value>) -> Value {
 pub fn __init_module__() {
     set_squares(Value::call(&Value::func(move |mut args: Vec<Value>| {
         let mut _acc: Rt<Value> = rt(Value::Array(rt({ let mut __v: Vec<Value> = Vec::new(); __v })));
-        for __item in __iter__(__range3__(&Value::Int(10i64), &Value::Int(0), &Value::Int(1))).borrow().iter() {
+        for __item in __iter__(__range3__(&Value::Int(0), &Value::Int(10i64), &Value::Int(1))).borrow().iter() {
             let x: Rt<Value> = rt(__item.clone());
             if (Value::Bool(Value::eq(&Value::py_mod(&x.borrow().clone(), &Value::Int(2i64)), &Value::Int(0i64)))).truthy() {
                 let _ = Value::call_method(&_acc.borrow().clone(), "append", vec![Value::mul(&x.borrow().clone(), &x.borrow().clone())]);

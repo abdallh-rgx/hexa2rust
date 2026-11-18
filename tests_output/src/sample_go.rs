@@ -17,7 +17,8 @@ pub fn sumTo(n: i64) -> i64 {
     let mut total: Rt<Value> = rt(Value::Int(0i64 as i64));
     let mut i: Rt<Value> = rt(Value::Int(1i64 as i64));
     loop { if !((Value::Bool(!Value::lt(&Value::Str(format!("{:?}", n.clone())), &i.borrow().clone()))).truthy()) { break; }
-        *total.borrow_mut() = Value::add(&total.borrow().clone(), &i.borrow().clone());
+        let __rhs_434 = Value::add(&total.borrow().clone(), &i.borrow().clone());
+        *total.borrow_mut() = __rhs_434;
         *i.borrow_mut() = Value::add(&i.borrow().clone(), &Value::Int(1));
         let _ = i.borrow().clone();
     }
@@ -30,14 +31,16 @@ pub fn main() {
     for __entry in __entries_v__(nums.borrow().clone()).borrow().iter() {
         let _: Rt<Value> = rt(Value::index_get(__entry, &Value::Int(0)));
         let v: Rt<Value> = rt(Value::index_get(__entry, &Value::Int(1)));
-        *total.borrow_mut() = Value::add(&total.borrow().clone(), &v.borrow().clone());
+        let __rhs_1281 = Value::add(&total.borrow().clone(), &v.borrow().clone());
+        *total.borrow_mut() = __rhs_1281;
     }
     let mut m: Rt<Value> = rt(__dict_new__(vec![(Value::Str("a".to_string()), Value::Int(1i64 as i64)), (Value::Str("b".to_string()), Value::Int(2i64 as i64))]));
     {
         let mut v: Rt<Value> = rt(Value::index_get(&m.borrow().clone(), &Value::Str("a".to_string())));
         let mut ok: Rt<Value> = rt(Value::Bool(__map_has__(&m.borrow().clone(), &Value::Str("a".to_string()))));
         if (ok.borrow().clone()).truthy() {
-            *total.borrow_mut() = Value::add(&total.borrow().clone(), &v.borrow().clone());
+            let __rhs_1842 = Value::add(&total.borrow().clone(), &v.borrow().clone());
+            *total.borrow_mut() = __rhs_1842;
         }
     }
     let _ = unimplemented!("method Println (unknown type)");

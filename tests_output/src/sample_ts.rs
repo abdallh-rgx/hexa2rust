@@ -48,8 +48,8 @@ pub fn totalArea(args: Vec<Value>) -> Value {
     let mut t: Rt<Value> = rt(Value::Int(0i64));
     for __item in __iter__(shapes.borrow().clone()).borrow().iter() {
         let s: Rt<Value> = rt(__item.clone());
-        let mut t: Rt<Value> = rt(Value::Undefined);
-        *t.borrow_mut() = Value::add(&t.borrow().clone(), &Value::call_method(&s.borrow().clone(), "area", vec![]));
+        let __rhs_2311 = Value::add(&t.borrow().clone(), &Value::call_method(&s.borrow().clone(), "area", vec![]));
+        *t.borrow_mut() = __rhs_2311;
         let _ = Value::call_method(&s.borrow().clone(), "area", vec![]);
     }
     return t.borrow().clone();

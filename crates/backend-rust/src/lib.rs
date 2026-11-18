@@ -453,9 +453,19 @@ impl<'a> Gen<'a> {
             scope.locals.insert("this".into(), Ty::Any);
             scope.cell_locals.insert("this".into());
             self.w("let this: Rt<Value> = rt(args.get(0).cloned().unwrap_or(Value::Undefined));");
+            // Python-style methods: first parameter (self) aliases `this`
+            if let Some(first) = f.params.first() {
+                if first.name == "self" {
+                    let pid = rust_ident(&first.name);
+                    scope.locals.insert(first.name.clone(), Ty::Any);
+                    scope.cell_locals.insert(first.name.clone());
+                    self.w(&format!("let {}: Rt<Value> = this.clone();", pid));
+                }
+            }
         }
         let mut idx = if this_param { 1 } else { 0 };
-        for p in &f.params {
+        let skip_first = this_param && f.params.first().map_or(false, |p| p.name == "self");
+        for p in f.params.iter().skip(if skip_first { 1 } else { 0 }) {
             scope.locals.insert(p.name.clone(), Ty::Any);
             scope.cell_locals.insert(p.name.clone());
             if p.default.is_some() {
@@ -611,6 +621,8 @@ impl<'a> Gen<'a> {
                         .map(|e| self.expr(e))
                         .unwrap_or_else(|| "Value::Undefined".into());
                     self.w(&format!("let {}{}: Rt<Value> = rt({});", if *mutable { "mut " } else { "" }, id, val));
+                    self.scope.locals.insert(name.clone(), Ty::Any);
+                    self.scope.cell_locals.insert(name.clone());
                 } else {
                     self.scope.locals.insert(name.clone(), ty.clone());
                     match ty {
@@ -1160,7 +1172,14 @@ impl<'a> Gen<'a> {
                     };
                     let rhs = self.expr(value);
                     let rhs = match op {
-                        Some(o) => self.binop_value(o, &cur, &rhs),
+                        Some(o) => {
+                            // compute the full result into a temp first so the
+                            // place borrow never overlaps the value borrows
+                            let tmp = format!("__rhs_{}", self.pos_hint());
+                            let res = self.binop_value(o, &cur, &rhs);
+                            self.w(&format!("let {} = {};", tmp, res));
+                            tmp
+                        }
                         None => rhs,
                     };
                     if is_global {
@@ -1187,11 +1206,13 @@ impl<'a> Gen<'a> {
                         VKind::Val => {
                             let rhs = self.to_value(value);
                             let rhs = match op {
-                                Some(o) => self.binop_value(
-                                    o,
-                                    &format!("{}.borrow().clone()", id),
-                                    &rhs,
-                                ),
+                                Some(o) => {
+                                    let tmp = format!("__rhs_{}", self.pos_hint());
+                                    let cur = format!("{}.borrow().clone()", id);
+                                    let res = self.binop_value(o, &cur, &rhs);
+                                    self.w(&format!("let {} = {};", tmp, res));
+                                    tmp
+                                }
                                 None => rhs,
                             };
                             self.w(&format!("*{}.borrow_mut() = {};", id, rhs));
@@ -1313,6 +1334,10 @@ impl<'a> Gen<'a> {
         format!("{}.borrow().clone()", id)
     }
 
+    fn pos_hint(&self) -> usize {
+        self.out.len()
+    }
+
     fn binop_value(&mut self, op: BinOp, l: &str, r: &str) -> String {
         match op {
             BinOp::Add => format!("Value::add(&{}, &{})", l, r),
@@ -1423,16 +1448,13 @@ impl<'a> Gen<'a> {
                             } else {
                                 format!("{}.borrow().clone()", id)
                             };
+                            let tmp = format!("__rhs_{}", self.pos_hint());
+                            let res = format!("Value::{}(&{}, &Value::Int(1))", one, load);
+                            self.w(&format!("let {} = {};", tmp, res));
                             if is_global {
-                                self.w(&format!(
-                                    "set_{}(Value::{}(&{}, &Value::Int(1)));",
-                                    id, one, load
-                                ));
+                                self.w(&format!("set_{}({});", id, tmp));
                             } else {
-                                self.w(&format!(
-                                    "*{}.borrow_mut() = Value::{}(&{}, &Value::Int(1));",
-                                    id, one, load
-                                ));
+                                self.w(&format!("*{}.borrow_mut() = {};", id, tmp));
                             }
                             format!("{}()", id)
                         }
@@ -1452,16 +1474,13 @@ impl<'a> Gen<'a> {
                             format!("{}.borrow().clone()", id)
                         };
                         let old = load.clone();
+                        let tmp = format!("__rhs_{}", self.pos_hint());
+                        let res = format!("Value::{}(&{}, &Value::Int(1))", one, load);
+                        self.w(&format!("let {} = {};", tmp, res));
                         if is_global {
-                            self.w(&format!(
-                                "set_{}(Value::{}(&{}, &Value::Int(1)));",
-                                id, one, load
-                            ));
+                            self.w(&format!("set_{}({});", id, tmp));
                         } else {
-                            self.w(&format!(
-                                "*{}.borrow_mut() = Value::{}(&{}, &Value::Int(1));",
-                                id, one, load
-                            ));
+                            self.w(&format!("*{}.borrow_mut() = {};", id, tmp));
                         }
                         old
                     }
@@ -1812,6 +1831,13 @@ impl<'a> Gen<'a> {
                 _ => unreachable!(),
             },
             "range" => {
+                if args.len() == 1 {
+                    let n = a[0].clone();
+                    return Some(format!(
+                        "__range3__(&Value::Int(0), &{}, &Value::Int(1))",
+                        n
+                    ));
+                }
                 let l = a.first().cloned().unwrap_or_else(|| "Value::Int(0)".into());
                 let h = a.get(1).cloned().unwrap_or_else(|| "Value::Int(0)".into());
                 let st = a.get(2).cloned().unwrap_or_else(|| "Value::Int(1)".into());

@@ -20,7 +20,8 @@ pub fn sumTo(n: i64) -> i64 {
     let mut total: Rt<Value> = rt(Value::Int(0i64 as i64));
     for __item in __iter__(Value::Array(rt((1i64..=n.clone()).map(|i| Value::Int(i)).collect::<Vec<Value>>()))).borrow().iter() {
         let i: Rt<Value> = rt(__item.clone());
-        *total.borrow_mut() = Value::add(&total.borrow().clone(), &i.borrow().clone());
+        let __rhs_554 = Value::add(&total.borrow().clone(), &i.borrow().clone());
+        *total.borrow_mut() = __rhs_554;
     }
     return __to_int__(&total.borrow().clone()).display().parse::<i64>().unwrap_or(0);
 }

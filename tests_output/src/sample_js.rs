@@ -52,15 +52,17 @@ pub fn run(args: Vec<Value>) -> Value {
     let mut total: Rt<Value> = rt(Value::Int(0i64));
     for __item in __iter__(items.borrow().clone()).borrow().iter() {
         let it: Rt<Value> = rt(__item.clone());
-        let mut total: Rt<Value> = rt(Value::Undefined);
-        *total.borrow_mut() = Value::add(&total.borrow().clone(), &it.borrow().clone());
+        let __rhs_2705 = Value::add(&total.borrow().clone(), &it.borrow().clone());
+        *total.borrow_mut() = __rhs_2705;
         let _ = it.borrow().clone();
     }
     let mut i: Rt<Value> = rt(Value::Int(0i64));
     loop { if !((Value::Bool(Value::lt(&i.borrow().clone(), &Value::Int(10i64)))).truthy()) { break; }
-        set_count(Value::add(&count(), &Value::Int(1)));
+        let __rhs_3026 = Value::add(&count(), &Value::Int(1));
+        set_count(__rhs_3026);
         let _ = count();
-        *i.borrow_mut() = Value::add(&i.borrow().clone(), &Value::Int(1));
+        let __rhs_3145 = Value::add(&i.borrow().clone(), &Value::Int(1));
+        *i.borrow_mut() = __rhs_3145;
         let _ = i.borrow().clone();
     }
     let p: Rt<Value> = rt(Point_new(vec![Value::Int(3i64), Value::Int(4i64)]));
